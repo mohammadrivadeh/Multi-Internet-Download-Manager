@@ -4,6 +4,7 @@ public enum DownloadStage { Probing, Downloading, Verifying, Completed }
 public sealed record DownloadProgress(DownloadStage Stage, long CompletedBytes, long? TotalBytes, bool Resumed)
 {
     public long AcceptedBytes { get; init; } = CompletedBytes;
+    public bool CheckpointCleanupPending { get; init; }
 }
 
 public sealed record DownloadOptions

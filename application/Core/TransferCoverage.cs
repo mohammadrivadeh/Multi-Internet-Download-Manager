@@ -54,10 +54,14 @@ public sealed class TransferRateEstimator
     {
         if (!initialized || accepted < baseline || elapsed <= last)
         { initialized = true; baseline = accepted; last = elapsed; previousRate = 0; return (0, null); }
-        if ((elapsed - last).TotalSeconds < 0.25) return (previousRate, null);
+        if ((elapsed - last).TotalSeconds < 0.25) return (previousRate, Estimate(accepted, total, previousRate));
         var rate = (accepted - baseline) / (elapsed - last).TotalSeconds;
         baseline = accepted; last = elapsed; previousRate = rate;
+        return (rate, Estimate(accepted, total, rate));
+    }
+    private static TimeSpan? Estimate(long accepted, long? total, double rate)
+    {
         var seconds = total is { } length && length >= accepted && rate > 0 ? (length - accepted) / rate : double.NaN;
-        return (rate, double.IsFinite(seconds) && seconds <= TimeSpan.MaxValue.TotalSeconds ? TimeSpan.FromSeconds(seconds) : null);
+        return double.IsFinite(seconds) && seconds < TimeSpan.MaxValue.TotalSeconds ? TimeSpan.FromSeconds(seconds) : null;
     }
 }

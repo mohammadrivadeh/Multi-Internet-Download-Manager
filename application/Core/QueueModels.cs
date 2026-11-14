@@ -19,6 +19,7 @@ public sealed record QueueJob
     public QueueJobState State { get; init; } = QueueJobState.Queued;
     public long CompletedBytes { get; init; }
     public long? TotalBytes { get; init; }
+    public bool CheckpointCleanupPending { get; init; }
     public string? FailureCode { get; init; }
 
     public void Validate()

@@ -95,3 +95,9 @@ Save form defaults persists workers, speed cap, priority and category in DPAPI-p
 ## Live transfer status
 
 The progress bar includes uniquely accepted bytes in active ranges; the existing byte/status/history counts for segmented transfers remain checkpointed bytes. A retry never adds the same range prefix twice. Accepted bytes can reach the total while verification is still running; completion is reported only after finalization. Speed/remaining time are event-based estimates and can be stale during stalls. The selected-job expander shows destination, sanitized origin and expected checksum without exposing signed URL queries. These UI changes are cross-compiled; actual Windows visual acceptance remains pending.
+
+## Recovering queue storage errors
+
+If a terminal queue save fails, the actual outcome stays visible and is retained for retry. Fix disk/access issues and click **Retry queue save** before closing. New queue mutations/run starts also retry pending outcomes first; history cannot silently discard them. Shutdown makes a final save attempt. A crash while storage remains unavailable can still restore the prior persisted row as Paused; do not delete or overwrite an existing finalized destination to force a retry.
+
+A Completed job may show a checkpoint-cleanup notice if its leftover SQLite sidecar could not be deleted. The finalized file is still successful and protected from overwrite. Close the app before inspecting/removing only the identified sidecar; no downloaded data is deleted by this warning.

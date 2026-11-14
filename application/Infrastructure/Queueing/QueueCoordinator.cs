@@ -16,6 +16,7 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
     private readonly SemaphoreSlim runner = new(1);
     private readonly Dictionary<Guid, QueueJob> jobs = [];
     private bool initialized;
+    private readonly Dictionary<Guid, QueueJob> pendingWrites = [];
 
     public async Task InitializeAsync(CancellationToken token = default)
     {
@@ -52,7 +53,7 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
         await gate.WaitAsync(token);
         try
         {
-            RequireInitialized();
+            RequireWritable();
             if (jobs.Count >= 1000) throw new InvalidOperationException("Remove terminal history before adding more jobs.");
             var job = request with { Destination = Path.GetFullPath(request.Destination), CreatedAt = time.GetUtcNow(), State = QueueJobState.Queued,
                 CompletedBytes = 0, TotalBytes = null, FailureCode = null, Category = DownloadCategory.Normalize(request.Category), Paths = Array.AsReadOnly(request.Paths.ToArray()) };
@@ -73,7 +74,7 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
         await gate.WaitAsync(token);
         try
         {
-            RequireInitialized();
+            RequireWritable();
             var current = jobs[id];
             if (current.State == QueueJobState.Running || next == QueueJobState.Running)
                 throw new InvalidOperationException("Active jobs must stop through the runner.");
@@ -90,7 +91,7 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
         await gate.WaitAsync(token);
         try
         {
-            RequireInitialized();
+            RequireWritable();
             var current = jobs[id];
             if (current.State == QueueJobState.Running) throw new InvalidOperationException("Stop the active job before changing its category.");
             var changed = current with { Category = category };
@@ -104,7 +105,7 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
         await gate.WaitAsync(token);
         try
         {
-            RequireInitialized();
+            RequireWritable();
             foreach (var job in jobs.Values.Where(j => j.State is QueueJobState.Completed or QueueJobState.Cancelled).ToArray())
             { store.Remove(job.Id); jobs.Remove(job.Id); }
         }
@@ -122,7 +123,7 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
                 await gate.WaitAsync(token);
                 try
                 {
-                    RequireInitialized();
+                    RequireWritable();
                     job = QueueScheduling.Next(jobs.Values, time.GetUtcNow());
                     if (job is null) return;
                     job = job.Transition(QueueJobState.Running);
@@ -146,7 +147,7 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
                     // Persist only allowlisted categories, never exception text or URLs.
                     failure = ex switch
                     {
-                        InvalidDataException => "Validation", HttpRequestException => "Network",
+                        InvalidDataException => "Validation", HttpRequestException or HttpIOException or EndOfStreamException => "Network",
                         UnauthorizedAccessException or IOException => "Storage", TimeoutException => "Timeout",
                         _ => "Failure"
                     };
@@ -157,9 +158,13 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
                     lock (progressLock)
                     {
                         job = job.Transition(terminal) with
-                        { CompletedBytes = latest?.CompletedBytes ?? job.CompletedBytes, TotalBytes = latest?.TotalBytes ?? job.TotalBytes, FailureCode = failure };
+                        { CompletedBytes = latest?.CompletedBytes ?? job.CompletedBytes, TotalBytes = latest?.TotalBytes ?? job.TotalBytes, CheckpointCleanupPending = latest?.CheckpointCleanupPending ?? false, FailureCode = failure };
                     }
-                    store.Save(job); jobs[job.Id] = job;
+                    // Execution has ended: reflect the actual outcome even if its persistence fails.
+                    jobs[job.Id] = job;
+                    pendingWrites[job.Id] = job;
+                    store.Save(job);
+                    pendingWrites.Remove(job.Id);
                 }
                 finally { gate.Release(); }
                 if (terminal == QueueJobState.Paused) return;
@@ -167,6 +172,20 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
             }
         }
         finally { runner.Release(); }
+    }
+
+    public async Task RetryPersistenceAsync(CancellationToken token = default)
+    {
+        await gate.WaitAsync(token);
+        try { RequireWritable(); }
+        finally { gate.Release(); }
+    }
+
+    private void RequireWritable()
+    {
+        RequireInitialized();
+        foreach (var pending in pendingWrites.Values.ToArray())
+        { store.Save(pending); pendingWrites.Remove(pending.Id); }
     }
 
     private void RequireInitialized()

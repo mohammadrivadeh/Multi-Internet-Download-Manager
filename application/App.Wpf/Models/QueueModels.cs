@@ -25,7 +25,7 @@ public sealed record QueueRow(QueueJob Job, IDesktopServices Desktop)
     public string State => Desktop.Text($"QueueState{Job.State}");
     public string Schedule => Job.NotBefore?.ToString("yyyy-MM-dd HH:mm zzz") ?? "";
     public string Progress => Job.TotalBytes is { } total ? $"{Job.CompletedBytes:N0} / {total:N0}" : $"{Job.CompletedBytes:N0}";
-    public string Failure => Job.FailureCode is { } code ? Desktop.Text($"QueueFailure{code}") : "";
+    public string Failure => Job.CheckpointCleanupPending ? Desktop.Text("CheckpointCleanupNotice") : Job.FailureCode is { } code ? Desktop.Text($"QueueFailure{code}") : "";
     public string RateLimit => Job.Options.BytesPerSecondLimit is { } limit ? (limit / 1024d).ToString("N1") : Desktop.Text("UnlimitedLabel");
     public int Priority => Job.Priority;
 }

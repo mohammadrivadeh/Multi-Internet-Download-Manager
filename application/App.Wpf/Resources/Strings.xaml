@@ -54,7 +54,7 @@
     <sys:String x:Key="ClearHistoryLabel">Clear completed / cancelled history</sys:String>
     <sys:String x:Key="ScheduleNote">Scheduled jobs run only while the app is open and the queue is started. Stopping the queue disables scheduled starts. Cancelling entries or clearing history never deletes downloaded or partial files.</sys:String>
     <sys:String x:Key="QueueLoadError">Queue storage is unavailable, protected by another account, or already open in another app instance. Existing data is preserved.</sys:String>
-    <sys:String x:Key="QueueSaveError">The queue could not be saved. Stop and check access and disk space; existing files are preserved.</sys:String>
+    <sys:String x:Key="QueueSaveError">Queue changes are not fully saved. Check access and disk space, then use Retry queue save before closing. Completed files are preserved.</sys:String>
     <sys:String x:Key="AddedStatus">Added to queue. Start the queue to process ready jobs.</sys:String>
     <sys:String x:Key="QueueInputError">Check the URL, destination, selected paths, checksum, workers, speed limit, priority and schedule. A scheduled time must include an offset, for example 2026-11-15T09:00:00+03:30.</sys:String>
     <sys:String x:Key="QueueConflictError">Another unfinished job owns this destination, or the queue is full. Clear terminal history or choose another destination.</sys:String>
@@ -80,4 +80,7 @@
     <sys:String x:Key="SpeedMetricLabel">Accepted payload speed:</sys:String>
     <sys:String x:Key="RemainingMetricLabel">Estimated remaining:</sys:String>
     <sys:String x:Key="SelectedDetailsLabel">Selected download · destination, origin and checksum</sys:String>
+    <sys:String x:Key="RetryQueueSaveLabel">Retry queue save</sys:String>
+    <sys:String x:Key="QueueSavedStatus">Pending queue outcomes saved.</sys:String>
+    <sys:String x:Key="CheckpointCleanupNotice">Completed; checkpoint cleanup pending. Keep the finalized download; remove only its leftover sidecar after closing the app.</sys:String>
 </ResourceDictionary>

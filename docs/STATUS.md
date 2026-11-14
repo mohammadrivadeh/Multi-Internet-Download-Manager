@@ -15,12 +15,12 @@ Updated 2026-11-14. The user authorized merging to main and continuing without w
 - One active file at a time, aging-based ready selection, five-second due-job checks after Start queue, and awaited download/save/initialization shutdown.
 - Optional per-job payload speed cap shared across all ranged workers/retries and sequential fallback; saved in the protected job configuration and displayed in KiB/s.
 - Console probe/download harnesses, synthetic fixture server and Linux/Windows GitHub Actions build/test workflow.
-- ADRs 0001–0011, architecture notes, acceptance procedures and backlog.
+- ADRs 0001–0012, architecture notes, acceptance procedures and backlog.
 
 ## Validation completed on the current machine
 
 - Release solution build, all eight projects: **0 warnings, 0 errors**.
-- Automated tests: **115 passed, 0 failed, 1 skipped** (37 Core passed; 78 integration passed, 1 Windows-only DPAPI skipped).
+- Automated tests: **122 passed, 0 failed, 1 skipped** (38 Core passed; 84 integration passed, 1 Windows-only DPAPI skipped).
 - Tested: interval boundaries, randomized exact coverage, stale snapshots, HTTP request/response behavior, invalid identity/header rejection before writes, short/oversized bodies, cancellation, sparse offset above 4 GiB, complete downloads, SQLite resume, damaged checkpoint data repair, changed-resource rejection, differing representations across paths, sequential fallback, checksum failure, destination collision including a race at finalization, and long Retry-After refusal without retrying early. Queue tests additionally cover priority aging, explicit-offset schedules, state transitions, encrypted persistence/tamper rejection, exclusive ownership, duplicate destinations/runners, cancellation ordering, failure progression, restart recovery and protected history after a real scheduled HTTP transfer. Rate-policy tests cover shared concurrent reservations, no idle credit, aggregate engine delivery pacing in segmented/sequential modes, cancellation and saved cap settings.
 - Tests configured at 16, 32 and 64 workers verified more than eight overlapping simulated requests and correct full output. These are correctness tests, not speed benchmarks or real interface aggregation.
 - Real local end-to-end smoke: ASP.NET fixture server → HTTP probe → range transfer → SQLite checkpoints → final file; compared with authoritative fixture SHA-256 and verified sidecar cleanup. A 16-worker configuration was used; the small fixture needs only one default-sized range, so this smoke does not establish 16 concurrent network requests.
@@ -91,3 +91,7 @@ New tests cover legacy category compatibility, bounds, protected round-trip, coo
 ## Live progress and details increment
 
 Accepted-byte progress is now separate from checkpointed progress, including maximum-prefix accounting across range retries. WPF shows event-based payload speed, estimated remaining time and a collapsible selected-job summary with destination, sanitized origin and checksum. Unknown estimates are shown as unknown. New policy tests cover coverage/ETA, and a rate-limited engine test verifies intermediate accepted bytes before the durable checkpoint. Stall heartbeat, smoothing and per-path telemetry are still pending.
+
+## Review fixes
+
+Fixed terminal persistence errors leaving ghost Running rows: retain true outcomes and pending writes, retry explicitly or before the next mutation/run, and attempt persistence on shutdown. Fixed failed sidecar deletion after successful rename: Completed now carries a persisted cleanup warning rather than failing the file. Fixed truncated/HTTP body errors misclassified as Storage and sub-250ms ETA samples flickering unknown. Seven added regressions pass, including injected failures for all terminal outcomes and full-file cleanup-failure verification. Pending writes remain volatile until a successful save; crashes in that window still need the documented existing-file reconciliation.

@@ -12,6 +12,10 @@ namespace DownloadManager.Infrastructure.Downloads;
 /// <summary>Caller supplies allowed, isolated transports. No transport is silently added.</summary>
 public sealed class DownloadEngine
 {
+    private readonly Action<string> deleteCheckpoint;
+    public DownloadEngine() : this(File.Delete) { }
+    internal DownloadEngine(Action<string> deleteCheckpoint) => this.deleteCheckpoint = deleteCheckpoint;
+
     public async Task DownloadAsync(Uri source, string destination, IReadOnlyList<HttpClient> transports,
         DownloadOptions? options = null, IProgress<DownloadProgress>? progress = null, CancellationToken cancellationToken = default)
     {
@@ -119,8 +123,10 @@ public sealed class DownloadEngine
         }
         cancellationToken.ThrowIfCancellationRequested();
         File.Move(part, destination, overwrite: false);
-        File.Delete(database);
-        progress?.Report(new(DownloadStage.Completed, length, length, resumed));
+        var cleanupPending = false;
+        try { deleteCheckpoint(database); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { cleanupPending = true; }
+        progress?.Report(new DownloadProgress(DownloadStage.Completed, length, length, resumed) { CheckpointCleanupPending = cleanupPending });
     }
 
     private static async Task DownloadSequentialAsync(Uri source, string destination, string part, string database, HttpClient client,

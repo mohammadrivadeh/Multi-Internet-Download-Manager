@@ -310,11 +310,59 @@ public class QueueTests
         public byte[] Unprotect(byte[] data) => throw new InvalidOperationException();
     }
 
+    [Theory]
+    [InlineData(QueueJobState.Completed)]
+    [InlineData(QueueJobState.Paused)]
+    [InlineData(QueueJobState.Failed)]
+    public async Task TerminalSaveFailureCanBeRetriedWithoutGhostRunnerOrRepeatedExecution(QueueJobState expected)
+    {
+        var memory = new MemoryStore { FailTerminalWrites = true };
+        var executor = new FakeExecutor((_, _, _) => expected switch
+        {
+            QueueJobState.Paused => Task.FromException(new OperationCanceledException()),
+            QueueJobState.Failed => Task.FromException(new InvalidDataException()),
+            _ => Task.CompletedTask
+        });
+        var queue = new QueueCoordinator(memory, executor, new TestClock(Now));
+        await queue.InitializeAsync();
+        var job = await queue.EnqueueAsync(Job());
+        await Assert.ThrowsAsync<IOException>(() => queue.RunReadyAsync());
+        Assert.Equal(expected, Assert.Single(await queue.SnapshotAsync()).State);
+        await Assert.ThrowsAsync<IOException>(() => queue.RetryPersistenceAsync());
+        await Assert.ThrowsAsync<IOException>(() => queue.ClearTerminalHistoryAsync());
+        Assert.Equal(QueueJobState.Running, memory.Jobs[job.Id].State);
+        memory.FailTerminalWrites = false;
+        await queue.RetryPersistenceAsync();
+        Assert.Equal(expected, memory.Jobs[job.Id].State);
+        await queue.RunReadyAsync();
+        Assert.Single(executor.Executed);
+        if (expected != QueueJobState.Completed)
+        { await queue.ChangeStateAsync(job.Id, QueueJobState.Queued); Assert.Equal(QueueJobState.Queued, memory.Jobs[job.Id].State); }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task TruncatedAndHttpBodyErrorsAreNetworkFailures(bool truncated)
+    {
+        var memory = new MemoryStore();
+        var executor = new FakeExecutor((_, _, _) => Task.FromException(truncated
+            ? new EndOfStreamException() : new System.Net.Http.HttpIOException(System.Net.Http.HttpRequestError.ResponseEnded)));
+        var queue = new QueueCoordinator(memory, executor, new TestClock(Now));
+        await queue.InitializeAsync(); var job = await queue.EnqueueAsync(Job()); await queue.RunReadyAsync();
+        Assert.Equal("Network", memory.Jobs[job.Id].FailureCode);
+    }
+
     private sealed class MemoryStore : IQueueStore
     {
         public Dictionary<Guid, QueueJob> Jobs { get; } = [];
         public IReadOnlyList<QueueJob> Load() => Jobs.Values.ToArray();
-        public void Save(QueueJob job) => Jobs[job.Id] = job;
+        public bool FailTerminalWrites { get; set; }
+        public void Save(QueueJob job)
+        {
+            if (FailTerminalWrites && job.State is not (QueueJobState.Queued or QueueJobState.Running)) throw new IOException("Injected terminal save failure");
+            Jobs[job.Id] = job;
+        }
         public void Remove(Guid id) => Jobs.Remove(id);
     }
     private sealed class FakeExecutor(Func<QueueJob, IProgress<DownloadProgress>?, CancellationToken, Task> execute) : IQueuedDownloadExecutor

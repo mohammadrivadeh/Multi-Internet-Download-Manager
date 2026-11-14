@@ -59,6 +59,14 @@ public partial class MainViewModel
     }
 
     [RelayCommand]
+    private async Task RetryQueueSaveAsync()
+    {
+        if (!IsReady || queue is null) return;
+        try { await Task.Run(() => queue.RetryPersistenceAsync()); await RefreshJobsAsync(); Status = Text("QueueSavedStatus"); }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { Status = Text("QueueSaveError"); }
+    }
+
+    [RelayCommand]
     private async Task ClearHistoryAsync()
     {
         if (queue is null) return;

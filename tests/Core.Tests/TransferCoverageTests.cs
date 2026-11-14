@@ -34,4 +34,14 @@ public class TransferCoverageTests
         Assert.Null(rate.Sample(1600, null, TimeSpan.FromSeconds(3)).Remaining);
         Assert.Equal(0, rate.Sample(0, 2000, TimeSpan.FromSeconds(4)).BytesPerSecond);
     }
+    [Fact]
+    public void SubintervalSamplesRetainEtaInsteadOfFlickeringUnknown()
+    {
+        var rate = new TransferRateEstimator();
+        rate.Sample(0, 10000, TimeSpan.Zero);
+        Assert.Equal(TimeSpan.FromSeconds(9), rate.Sample(1000, 10000, TimeSpan.FromSeconds(1)).Remaining);
+        var next = rate.Sample(1100, 10000, TimeSpan.FromSeconds(1.1));
+        Assert.Equal(1000, next.BytesPerSecond); Assert.Equal(TimeSpan.FromSeconds(8.9), next.Remaining);
+        Assert.Null(rate.Sample(1150, null, TimeSpan.FromSeconds(1.15)).Remaining);
+    }
 }

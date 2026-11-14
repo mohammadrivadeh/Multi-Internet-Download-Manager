@@ -25,6 +25,7 @@
                 <Button Content="{DynamicResource AssignCategoryLabel}" Command="{Binding AssignCategoryCommand}"/>
                 <Button Content="{DynamicResource ResumeSelectedLabel}" Command="{Binding ResumeSelectedCommand}"/>
                 <Button Content="{DynamicResource CancelSelectedLabel}" Command="{Binding CancelSelectedCommand}"/>
+                <Button Content="{DynamicResource RetryQueueSaveLabel}" Command="{Binding RetryQueueSaveCommand}"/>
                 <Button Content="{DynamicResource ClearHistoryLabel}" Command="{Binding ClearHistoryCommand}"/>
             </WrapPanel>
 <Expander Grid.Row="4" Header="{DynamicResource SelectedDetailsLabel}" Margin="0,12,0,0"><StackPanel>

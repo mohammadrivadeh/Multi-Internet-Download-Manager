@@ -126,9 +126,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         IsReady = false; autoRun = false; timer.Stop(); stop?.Cancel();
         var tasks = new[] { RunQueueCommand.ExecutionTask, AddCommand.ExecutionTask, ResumeSelectedCommand.ExecutionTask,
-            CancelSelectedCommand.ExecutionTask, ClearHistoryCommand.ExecutionTask, RefreshCommand.ExecutionTask, SaveDefaultsCommand.ExecutionTask, AssignCategoryCommand.ExecutionTask };
+            CancelSelectedCommand.ExecutionTask, ClearHistoryCommand.ExecutionTask, RefreshCommand.ExecutionTask, SaveDefaultsCommand.ExecutionTask, AssignCategoryCommand.ExecutionTask, RetryQueueSaveCommand.ExecutionTask };
         try { await Task.WhenAll(tasks.Where(t => t is not null).Cast<Task>()); }
         catch (Exception ex) when (ex is not OutOfMemoryException) { Status = Text("QueueSaveError"); }
+        if (queue is not null)
+        {
+            try { await Task.Run(() => queue.RetryPersistenceAsync()); }
+            catch (Exception ex) when (ex is not OutOfMemoryException) { Status = Text("QueueSaveError"); }
+        }
     }
 
     public void Dispose()

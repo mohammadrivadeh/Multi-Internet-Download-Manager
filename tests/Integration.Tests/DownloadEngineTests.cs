@@ -211,6 +211,24 @@ public class DownloadEngineTests
         });
     }
 
+    [Fact]
+    public async Task SidecarDeletionFailureDoesNotFailOrOverwriteFinalizedDownload()
+    {
+        await InDirectoryAsync(async target =>
+        {
+            using var client = new HttpClient(new FixtureHandler());
+            DownloadProgress? completed = null;
+            var engine = new DownloadEngine(_ => throw new IOException("Injected sidecar sharing failure"));
+            await engine.DownloadAsync(new("http://fixture.invalid/file"), target, [client], Options,
+                new InlineProgress(p => { if (p.Stage == DownloadStage.Completed) completed = p; }));
+            Assert.NotNull(completed); Assert.True(completed.CheckpointCleanupPending);
+            Assert.Equal(Fixture, await File.ReadAllBytesAsync(target));
+            Assert.True(File.Exists(target + ".part.sqlite"));
+            await Assert.ThrowsAsync<IOException>(() => engine.DownloadAsync(new("http://fixture.invalid/file"), target, [client], Options));
+            Assert.Equal(Fixture, await File.ReadAllBytesAsync(target));
+        });
+    }
+
     private static async Task InDirectoryAsync(Func<string, Task> test)
     {
         var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
