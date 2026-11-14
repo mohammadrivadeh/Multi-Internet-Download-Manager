@@ -24,6 +24,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private bool autoRun;
     private bool preferencesWritable;
     private long runGeneration;
+    private TimeSpan lastTelemetryAt;
     private Guid? telemetryJob;
     private TransferRateEstimator estimator = new();
     private readonly Stopwatch telemetryClock = Stopwatch.StartNew();
@@ -33,6 +34,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public ObservableCollection<CategoryOption> Categories { get; } = [];
     public ObservableCollection<QueueRow> Jobs { get; } = [];
     public ListCollectionView JobsView { get; }
+    [ObservableProperty] private int jobCount;
+    [ObservableProperty] private int completedCount;
+    public bool HasVisibleJobs => !JobsView.IsEmpty;
     [ObservableProperty] private string url = "";
     [ObservableProperty] private string destinationRoot = "";
     [ObservableProperty] private string destination = "";
@@ -64,6 +68,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         this.desktop = desktop; this.session = session;
         Status = Text("ReadyStatus");
         JobsView = new ListCollectionView(Jobs) { Filter = FilterJob };
+        var liveView = (System.ComponentModel.ICollectionViewLiveShaping)JobsView;
+        liveView.LiveFilteringProperties.Add(nameof(QueueRow.Job));
+        liveView.IsLiveFiltering = true;
+        ((System.Collections.Specialized.INotifyCollectionChanged)JobsView).CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasVisibleJobs));
         timer = desktop.CreateTimer(async () =>
         {
             try { await CheckScheduleAsync(); }
@@ -110,16 +118,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void UpdateProgress(Guid id, DownloadProgress value)
     {
         if (telemetryJob != id || value.Stage != DownloadStage.Downloading) { telemetryJob = id; estimator = new(); }
+        lastTelemetryAt = telemetryClock.Elapsed;
         var sample = estimator.Sample(value.AcceptedBytes, value.TotalBytes, telemetryClock.Elapsed);
         SpeedText = value.Stage == DownloadStage.Downloading && sample.BytesPerSecond > 0 ? $"{sample.BytesPerSecond / 1024:N1} KiB/s" : "—";
         RemainingText = value.Stage == DownloadStage.Downloading && sample.Remaining is { } remaining ? remaining.ToString(@"d\.hh\:mm\:ss") : "—";
         var existing = Jobs.FirstOrDefault(row => row.Job.Id == id);
         if (existing is not null && existing.Job.State is QueueJobState.Queued or QueueJobState.Running)
         {
-            var replacement = new QueueRow(existing.Job with { State = QueueJobState.Running, CompletedBytes = value.CompletedBytes, TotalBytes = value.TotalBytes }, desktop);
-            var selected = SelectedJob?.Job.Id == id;
-            Jobs[Jobs.IndexOf(existing)] = replacement;
-            if (selected) SelectedJob = replacement;
+            existing.Update(existing.Job with { State = QueueJobState.Running, CompletedBytes = value.CompletedBytes, TotalBytes = value.TotalBytes });
+            RefreshActionAvailability();
         }
         IsIndeterminate = value.TotalBytes is null;
         Percentage = value.TotalBytes is > 0 ? (double)value.AcceptedBytes / value.TotalBytes.Value * 100 : value.Stage == DownloadStage.Completed ? 100 : 0;

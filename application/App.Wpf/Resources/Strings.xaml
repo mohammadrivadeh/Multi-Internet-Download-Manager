@@ -93,4 +93,8 @@
     <sys:String x:Key="ChooseRootLabel">Choose base folder</sys:String>
     <sys:String x:Key="SuggestDestinationLabel">Suggest category destination</sys:String>
     <sys:String x:Key="DestinationRuleError">Choose an existing base folder and a category/URL filename valid on Windows, or choose a destination manually. Linked folders are unsupported by automatic rules.</sys:String>
+    <sys:String x:Key="JobCountLabel">Jobs:</sys:String>
+    <sys:String x:Key="CompletedCountLabel">Completed:</sys:String>
+    <sys:String x:Key="EmptyQueueLabel">No matching downloads. Add a URL on the left or adjust the filters.</sys:String>
+    <sys:String x:Key="ResizePanelsLabel">Resize download form and queue panels</sys:String>
 </ResourceDictionary>

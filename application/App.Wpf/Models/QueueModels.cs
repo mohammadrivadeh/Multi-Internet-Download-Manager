@@ -20,8 +20,17 @@ public partial class PathSelection(NetworkPath path) : ObservableObject
 
 public sealed record CategoryOption(string Key, string Name);
 
-public sealed record QueueRow(QueueJob Job, IDesktopServices Desktop)
+public sealed class QueueRow : ObservableObject
 {
+    private QueueJob job;
+    private readonly IDesktopServices Desktop;
+    public QueueJob Job => job;
+    public QueueRow(QueueJob job, IDesktopServices desktop) { this.job = job; Desktop = desktop; }
+    public void Update(QueueJob value)
+    {
+        if (job == value) return;
+        job = value; OnPropertyChanged(string.Empty);
+    }
     public string Destination => Job.Destination;
     public string Origin => Job.Source.GetLeftPart(UriPartial.Authority);
     public string Checksum => Job.Options.ExpectedSha256 ?? "—";

@@ -41,13 +41,14 @@ public partial class MainViewModel
         finally
         {
             stop.Dispose(); stop = null; IsBusy = false; IsIndeterminate = false;
+            SpeedText = "—"; RemainingText = "—"; estimator = new(); telemetryJob = null;
             await RefreshJobsAsync();
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanResumeSelected))]
     private async Task ResumeSelectedAsync() => await ChangeSelectedAsync(QueueJobState.Queued);
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanCancelSelected))]
     private async Task CancelSelectedAsync() => await ChangeSelectedAsync(QueueJobState.Cancelled);
     private async Task ChangeSelectedAsync(QueueJobState state)
     {
@@ -82,11 +83,15 @@ public partial class MainViewModel
             var snapshot = await queue.SnapshotAsync();
             var selected = SelectedJob?.Job.Id;
             var selectedCategory = CategoryFilter;
-            Categories.Clear(); Categories.Add(new("", Text("AllCategoriesLabel")));
-            foreach (var name in snapshot.Select(j => j.Category).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(n => n)) Categories.Add(new(name, name));
+            var desiredCategories = new[] { new CategoryOption("", Text("AllCategoriesLabel")) }
+                .Concat(snapshot.Select(j => j.Category).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(n => n).Select(n => new CategoryOption(n, n))).ToArray();
+            if (!Categories.SequenceEqual(desiredCategories))
+                DownloadManager.App.Presentation.StableCollection.Reconcile(Categories, desiredCategories, c => c.Key, c => c.Key, c => c, (_, _) => { });
             CategoryFilter = Categories.Any(c => c.Key == selectedCategory) ? selectedCategory : "";
-            Jobs.Clear();
-            foreach (var job in snapshot.OrderByDescending(j => j.CreatedAt)) Jobs.Add(new(job, desktop));
+            DownloadManager.App.Presentation.StableCollection.Reconcile(Jobs, snapshot.OrderByDescending(j => j.CreatedAt).ToArray(),
+                row => row.Job.Id, job => job.Id, job => new QueueRow(job, desktop), (row, job) => row.Update(job));
+            JobCount = Jobs.Count; CompletedCount = Jobs.Count(row => row.Job.State == QueueJobState.Completed);
+            RefreshActionAvailability();
             SelectedJob = Jobs.FirstOrDefault(j => j.Job.Id == selected);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException) { Status = Text("QueueLoadError"); }
@@ -95,7 +100,7 @@ public partial class MainViewModel
     private async Task CheckScheduleAsync()
     {
         if (!IsReady || queue is null) return;
-        if (IsBusy) { await RefreshJobsAsync(); return; }
+        if (IsBusy) { RefreshStallDisplay(); await RefreshJobsAsync(); return; }
         if (!autoRun) return;
         var jobs = await queue.SnapshotAsync();
         if (autoRun && IsReady && QueueScheduling.Next(jobs, DateTimeOffset.UtcNow) is not null)

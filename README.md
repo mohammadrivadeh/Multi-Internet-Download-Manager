@@ -113,3 +113,9 @@ Each discovered connection has a KiB/s input beside its selection; zero is unlim
 ## Category destination suggestions
 
 Under Destination folder rules, choose an existing base folder and click Suggest category destination. The proposed path is `base/category/URL-filename`; review or edit it before Add to queue. Query strings are excluded. A trailing-slash URL uses download.bin. Invalid Windows names/traversal/encoded separators are rejected rather than silently renamed. Matching generated category folders are created only when adding the validated job; manual destination edits do not trigger automatic folder creation. Linked/reparse folders are unsupported by these automatic rules. The optional base folder can be saved with form defaults; the complete destination filename is not saved as a default.
+
+## Desktop usability and refresh behavior
+
+Drag the divider between the download form and queue to resize panels. The queue shows total/completed job counts and a no-results message for empty filters. Paused/failed rows enable requeue; active/completed rows cannot be cancelled through the pending-entry action. Existing rows update in place so refreshes avoid rebuilding the table. User filtering/sorting can still move or hide rows. The selected details view stays attached to its row.
+
+Speed and ETA become unknown after an idle threshold checked by the five-second timer, and clear when the runner ends. The portable Presentation.Tests suite verifies collection update contracts; real WPF binding, scrolling and accessibility tests still require Windows.
