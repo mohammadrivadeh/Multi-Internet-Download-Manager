@@ -1,7 +1,10 @@
 namespace DownloadManager.Core;
 
 public enum DownloadStage { Probing, Downloading, Verifying, Completed }
-public sealed record DownloadProgress(DownloadStage Stage, long CompletedBytes, long? TotalBytes, bool Resumed);
+public sealed record DownloadProgress(DownloadStage Stage, long CompletedBytes, long? TotalBytes, bool Resumed)
+{
+    public long AcceptedBytes { get; init; } = CompletedBytes;
+}
 
 public sealed record DownloadOptions
 {

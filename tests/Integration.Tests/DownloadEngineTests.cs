@@ -194,6 +194,23 @@ public class DownloadEngineTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => wait);
     }
 
+    [Fact]
+    public async Task LiveAcceptedProgressPrecedesDurableCheckpointWithoutInflatingCompletion()
+    {
+        await InDirectoryAsync(async target =>
+        {
+            using var client = new HttpClient(new FixtureHandler());
+            var samples = new List<DownloadProgress>();
+            await new DownloadEngine().DownloadAsync(new("http://fixture.invalid/file"), target, [client], Options with
+            { Workers = 1, MinimumRangeBytes = Fixture.Length, MaximumRangeBytes = Fixture.Length, BytesPerSecondLimit = Fixture.Length },
+                new InlineProgress(p => samples.Add(p)));
+            Assert.Contains(samples, p => p.Stage == DownloadStage.Downloading && p.AcceptedBytes > p.CompletedBytes && p.AcceptedBytes < Fixture.Length);
+            Assert.All(samples, p => Assert.True(p.AcceptedBytes >= p.CompletedBytes));
+            Assert.Equal(Fixture.Length, samples.Last().CompletedBytes);
+            Assert.Equal(Fixture, await File.ReadAllBytesAsync(target));
+        });
+    }
+
     private static async Task InDirectoryAsync(Func<string, Task> test)
     {
         var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));

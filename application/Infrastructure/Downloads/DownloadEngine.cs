@@ -60,7 +60,23 @@ public sealed class DownloadEngine
             var allocationLock = new object();
             long completed = verified.Sum(r => r.Length);
             progress?.Report(new(DownloadStage.Downloading, completed, length, resumed));
-            var workers = Enumerable.Range(0, options.Workers).Select(i => WorkerAsync(transports[i % transports.Count])).ToArray();
+            var coverage = new TransferCoverage(length, completed, options.Workers);
+            var reportLock = new object();
+            var reportWatch = Stopwatch.StartNew();
+            var firstSample = true;
+            long lastAccepted = completed, lastDurable = completed;
+            void ReportCoverage(TransferCoverageSnapshot snapshot, bool force)
+            {
+                lock (reportLock)
+                {
+                    if (snapshot.AcceptedBytes < lastAccepted || snapshot.DurableBytes < lastDurable) return;
+                    if (!force && !firstSample && reportWatch.ElapsedMilliseconds < 100) return;
+                    lastAccepted = snapshot.AcceptedBytes; lastDurable = snapshot.DurableBytes;
+                    firstSample = false; reportWatch.Restart();
+                    progress?.Report(new DownloadProgress(DownloadStage.Downloading, snapshot.DurableBytes, length, resumed) { AcceptedBytes = snapshot.AcceptedBytes });
+                }
+            }
+            var workers = Enumerable.Range(0, options.Workers).Select(i => WorkerAsync(i, transports[i % transports.Count])).ToArray();
             await Task.WhenAll(workers); // All writers end before verification, finalization or a caller retry.
             cancellationToken.ThrowIfCancellationRequested();
             if (completed != length || RandomAccess.GetLength(handle) != length) throw new InvalidDataException("Incomplete coverage.");
@@ -70,7 +86,7 @@ public sealed class DownloadEngine
             await VerifyHashAsync(handle, length, options.ExpectedSha256, cancellationToken);
             RandomAccess.FlushToDisk(handle);
 
-            async Task WorkerAsync(HttpClient transport)
+            async Task WorkerAsync(int worker, HttpClient transport)
             {
                 long target = options.MinimumRangeBytes;
                 try
@@ -80,8 +96,9 @@ public sealed class DownloadEngine
                         ByteRange? range;
                         lock (allocationLock) range = pool.Take(target);
                         if (range is null) return;
+                        coverage.Start(worker, range.Length);
                         var watch = Stopwatch.StartNew();
-                        await RetryAsync(() => RangeTransfer.WriteAsync(transport, source, range, length, resource.ETag!, handle, stop.Token, rateLimiter, resource.EffectiveUri), options.RetryLimit, stop.Token);
+                        await RetryAsync(() => RangeTransfer.WriteAsync(transport, source, range, length, resource.ETag!, handle, stop.Token, rateLimiter, resource.EffectiveUri, prefix => ReportCoverage(coverage.Advance(worker, prefix), false)), options.RetryLimit, stop.Token);
                         var hash = await HashAsync(handle, range.Start, range.Length, stop.Token) ?? throw new EndOfStreamException();
                         await checkpoint.WaitAsync(stop.Token);
                         try
@@ -90,7 +107,7 @@ public sealed class DownloadEngine
                             RandomAccess.FlushToDisk(handle);
                             store.Save(range, hash);
                             completed += range.Length;
-                            progress?.Report(new(DownloadStage.Downloading, completed, length, resumed));
+                            ReportCoverage(coverage.Commit(worker), true);
                         }
                         finally { checkpoint.Release(); }
                         var estimate = range.Length / Math.Max(watch.Elapsed.TotalSeconds, 0.001) * 2;

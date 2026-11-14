@@ -11,7 +11,7 @@ namespace DownloadManager.Infrastructure.Http;
 public static class RangeTransfer
 {
     public static async Task<long> WriteAsync(HttpClient client, Uri source, ByteRange range,
-        long resourceLength, string strongETag, SafeFileHandle destination, CancellationToken cancellationToken, PayloadRateLimiter? rateLimiter = null, Uri? expectedResponseUri = null)
+        long resourceLength, string strongETag, SafeFileHandle destination, CancellationToken cancellationToken, PayloadRateLimiter? rateLimiter = null, Uri? expectedResponseUri = null, Action<long>? acceptedPrefix = null)
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(range);
@@ -52,6 +52,7 @@ public static class RangeTransfer
                 if (rateLimiter is not null) await rateLimiter.WaitAsync(count, cancellationToken);
                 await RandomAccess.WriteAsync(destination, buffer.AsMemory(0, count), range.Start + written, cancellationToken);
                 written += count;
+                acceptedPrefix?.Invoke(written);
             }
             // Chunked/unknown-length responses may contain extra bytes beyond the claimed range.
             if (await HttpTransferPolicy.ReadAsync(body, buffer.AsMemory(0, 1), cancellationToken) != 0)

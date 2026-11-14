@@ -16,6 +16,10 @@ public sealed record CategoryOption(string Key, string Name);
 
 public sealed record QueueRow(QueueJob Job, IDesktopServices Desktop)
 {
+    public string Destination => Job.Destination;
+    public string Origin => Job.Source.GetLeftPart(UriPartial.Authority);
+    public string Checksum => Job.Options.ExpectedSha256 ?? "—";
+    public int Workers => Job.Options.Workers;
     public string Category => Job.Category;
     public string Filename => Path.GetFileName(Job.Destination);
     public string State => Desktop.Text($"QueueState{Job.State}");

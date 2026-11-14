@@ -1,4 +1,4 @@
-<UserControl x:Class="DownloadManager.App.Views.Sections.QueueView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>            <TextBlock Text="{DynamicResource QueueLabel}" FontSize="18" FontWeight="SemiBold" Margin="0,20,0,8"/>
+<UserControl x:Class="DownloadManager.App.Views.Sections.QueueView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>            <TextBlock Text="{DynamicResource QueueLabel}" FontSize="18" FontWeight="SemiBold" Margin="0,20,0,8"/>
             <DockPanel Grid.Row="1">
                 <ComboBox ItemsSource="{Binding Categories}" DisplayMemberPath="Name" SelectedValuePath="Key" SelectedValue="{Binding CategoryFilter}" DockPanel.Dock="Right" Width="150" Margin="10,6,0,12" AutomationProperties.Name="{DynamicResource CategoryLabel}"/>
                 <ComboBox SelectedValue="{Binding StateFilter}" SelectedValuePath="Tag" DockPanel.Dock="Right" Width="150" Margin="10,6,0,12">
@@ -27,4 +27,9 @@
                 <Button Content="{DynamicResource CancelSelectedLabel}" Command="{Binding CancelSelectedCommand}"/>
                 <Button Content="{DynamicResource ClearHistoryLabel}" Command="{Binding ClearHistoryCommand}"/>
             </WrapPanel>
-</Grid></UserControl>
+<Expander Grid.Row="4" Header="{DynamicResource SelectedDetailsLabel}" Margin="0,12,0,0"><StackPanel>
+    <TextBlock Text="{Binding SelectedJob.Filename}" FontWeight="SemiBold"/>
+    <TextBlock Text="{Binding SelectedJob.Destination}" TextWrapping="Wrap"/>
+    <TextBlock Text="{Binding SelectedJob.Origin}" TextWrapping="Wrap"/>
+    <TextBlock Text="{Binding SelectedJob.Checksum}" TextWrapping="Wrap"/>
+</StackPanel></Expander></Grid></UserControl>

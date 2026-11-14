@@ -91,3 +91,7 @@ The desktop uses explicit application composition, focused shell command modules
 Enter a category in the form when adding a job. Use the category filter to narrow history, or Apply category to selected to reclassify a non-running entry. Names contain 1–64 printable characters; existing jobs without a category appear under General. Reclassification never moves or deletes files. Automatic folder rules are not implemented.
 
 Save form defaults persists workers, speed cap, priority and category in DPAPI-protected `preferences.bin` beside `queue.sqlite`. It does not save the source URL, destination, checksum, connections, schedule or queue autorun. Saved queue entries keep their own captured settings. Unreadable settings are preserved and built-in values are used; to reset, close the app and back up/rename the unreadable preferences file before restarting. Defaults cannot be overwritten through the UI after a load failure.
+
+## Live transfer status
+
+The progress bar includes uniquely accepted bytes in active ranges; the existing byte/status/history counts for segmented transfers remain checkpointed bytes. A retry never adds the same range prefix twice. Accepted bytes can reach the total while verification is still running; completion is reported only after finalization. Speed/remaining time are event-based estimates and can be stale during stalls. The selected-job expander shows destination, sanitized origin and expected checksum without exposing signed URL queries. These UI changes are cross-compiled; actual Windows visual acceptance remains pending.

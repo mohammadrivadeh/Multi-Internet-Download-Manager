@@ -77,4 +77,7 @@
     <sys:String x:Key="PreferencesLoadError">Saved defaults could not be read. They were preserved; built-in form defaults are in use.</sys:String>
     <sys:String x:Key="PreferencesSaveError">Defaults could not be saved. Check access and disk space; previous preferences were preserved.</sys:String>
     <sys:String x:Key="CategoryInputError">Enter a category with 1–64 printable characters.</sys:String>
+    <sys:String x:Key="SpeedMetricLabel">Accepted payload speed:</sys:String>
+    <sys:String x:Key="RemainingMetricLabel">Estimated remaining:</sys:String>
+    <sys:String x:Key="SelectedDetailsLabel">Selected download · destination, origin and checksum</sys:String>
 </ResourceDictionary>

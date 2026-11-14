@@ -23,6 +23,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private bool autoRun;
     private bool preferencesWritable;
     private long runGeneration;
+    private Guid? telemetryJob;
+    private TransferRateEstimator estimator = new();
+    private readonly Stopwatch telemetryClock = Stopwatch.StartNew();
     private readonly NetworkPathCatalog catalog = new();
     private readonly IDesktopTimer timer;
     public ObservableCollection<PathSelection> Paths { get; } = [];
@@ -44,6 +47,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string status = "";
     [ObservableProperty] private double percentage;
     [ObservableProperty] private bool isIndeterminate;
+    [ObservableProperty] private string speedText = "—";
+    [ObservableProperty] private string remainingText = "—";
     [ObservableProperty] private string search = "";
     [ObservableProperty] private string stateFilter = "All";
     [ObservableProperty] private QueueRow? selectedJob;
@@ -99,6 +104,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void UpdateProgress(Guid id, DownloadProgress value)
     {
+        if (telemetryJob != id || value.Stage != DownloadStage.Downloading) { telemetryJob = id; estimator = new(); }
+        var sample = estimator.Sample(value.AcceptedBytes, value.TotalBytes, telemetryClock.Elapsed);
+        SpeedText = value.Stage == DownloadStage.Downloading && sample.BytesPerSecond > 0 ? $"{sample.BytesPerSecond / 1024:N1} KiB/s" : "—";
+        RemainingText = value.Stage == DownloadStage.Downloading && sample.Remaining is { } remaining ? remaining.ToString(@"d\.hh\:mm\:ss") : "—";
         var existing = Jobs.FirstOrDefault(row => row.Job.Id == id);
         if (existing is not null && existing.Job.State is QueueJobState.Queued or QueueJobState.Running)
         {
@@ -108,7 +117,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (selected) SelectedJob = replacement;
         }
         IsIndeterminate = value.TotalBytes is null;
-        Percentage = value.TotalBytes is > 0 ? (double)value.CompletedBytes / value.TotalBytes.Value * 100 : value.Stage == DownloadStage.Completed ? 100 : 0;
+        Percentage = value.TotalBytes is > 0 ? (double)value.AcceptedBytes / value.TotalBytes.Value * 100 : value.Stage == DownloadStage.Completed ? 100 : 0;
+        if (value.Stage != DownloadStage.Downloading) estimator = new();
         Status = string.Format(System.Globalization.CultureInfo.CurrentCulture, Text("ProgressFormat"), Text($"Stage{value.Stage}"), value.CompletedBytes, value.TotalBytes?.ToString("N0") ?? Text("UnknownTotal"));
     }
 
