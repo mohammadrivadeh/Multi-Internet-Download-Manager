@@ -20,10 +20,10 @@ public partial class MainViewModel
     private void Pause()
     { autoRun = false; stop?.Cancel(); }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanRunQueue))]
     private async Task RunQueueAsync()
     {
-        if (!IsReady || queue is null || IsBusy) return;
+        if (!CanRunQueue || queue is null) return;
         IsBusy = true; autoRun = true;
         Percentage = 0; IsIndeterminate = true;
         Status = Text("PreparingStatus");
@@ -101,7 +101,7 @@ public partial class MainViewModel
     {
         if (!IsReady || queue is null) return;
         if (IsBusy) { RefreshStallDisplay(); await RefreshJobsAsync(); return; }
-        if (!autoRun) return;
+        if (!autoRun || IsEditing) return;
         var jobs = await queue.SnapshotAsync();
         if (autoRun && IsReady && QueueScheduling.Next(jobs, DateTimeOffset.UtcNow) is not null)
             await RunQueueCommand.ExecuteAsync(null);

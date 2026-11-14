@@ -16,17 +16,17 @@ namespace DownloadManager.App.ViewModels;
 
 public partial class MainViewModel
 {
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanPickIdentity))]
     private void Browse()
     {
         if (desktop.ChooseDestination() is { } chosen) Destination = chosen;
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanPickIdentity))]
     private void ChooseRoot()
     { if (desktop.ChooseFolder() is { } root) DestinationRoot = root; }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanPickIdentity))]
     private void SuggestDestination()
     {
         try
@@ -38,10 +38,10 @@ public partial class MainViewModel
         { plannedDestination = null; Status = Text("DestinationRuleError"); }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanAdd))]
     private async Task AddAsync()
     {
-        if (!IsReady || queue is null) return;
+        if (!IsReady || IsEditing || queue is null) return;
         try
         {
             if (!Uri.TryCreate(Url, UriKind.Absolute, out var source) || string.IsNullOrWhiteSpace(Destination)

@@ -97,4 +97,11 @@
     <sys:String x:Key="CompletedCountLabel">Completed:</sys:String>
     <sys:String x:Key="EmptyQueueLabel">No matching downloads. Add a URL on the left or adjust the filters.</sys:String>
     <sys:String x:Key="ResizePanelsLabel">Resize download form and queue panels</sys:String>
+    <sys:String x:Key="EditSelectedLabel">Edit selected job</sys:String>
+    <sys:String x:Key="SaveEditedLabel">Save job settings</sys:String>
+    <sys:String x:Key="CancelEditLabel">Cancel edit / New job</sys:String>
+    <sys:String x:Key="ReplaceConnectionsLabel">For this edit, replace saved connections with the current selection</sys:String>
+    <sys:String x:Key="EditLoadedStatus">Editing job policy. Source, destination and checksum remain fixed. Saved connections remain unchanged unless you explicitly replace them. Save does not requeue paused/failed work.</sys:String>
+    <sys:String x:Key="EditSavedStatus">Job settings saved. Its identity, data files, progress and state were preserved.</sys:String>
+    <sys:String x:Key="EditCancelledStatus">Edit discarded. Ready for a new job.</sys:String>
 </ResourceDictionary>

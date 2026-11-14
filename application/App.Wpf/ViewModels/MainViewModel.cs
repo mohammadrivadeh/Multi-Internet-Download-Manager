@@ -20,6 +20,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IQueueSession session;
     private readonly IDesktopServices desktop;
     private QueueCoordinator? queue;
+    private QueueJob? editingJob;
     private PlannedDestination? plannedDestination;
     private bool autoRun;
     private bool preferencesWritable;
@@ -37,6 +38,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private int jobCount;
     [ObservableProperty] private int completedCount;
     public bool HasVisibleJobs => !JobsView.IsEmpty;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(CanChangeIdentity))] private bool isEditing;
+    [ObservableProperty] private bool replaceEditedConnections;
+    public bool CanChangeIdentity => !IsEditing;
     [ObservableProperty] private string url = "";
     [ObservableProperty] private string destinationRoot = "";
     [ObservableProperty] private string destination = "";
@@ -67,6 +71,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         this.desktop = desktop; this.session = session;
         Status = Text("ReadyStatus");
+        SaveEditedCommand.PropertyChanged += (_, _) => RefreshActionAvailability();
         JobsView = new ListCollectionView(Jobs) { Filter = FilterJob };
         var liveView = (System.ComponentModel.ICollectionViewLiveShaping)JobsView;
         liveView.LiveFilteringProperties.Add(nameof(QueueRow.Job));
@@ -138,7 +143,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         IsReady = false; autoRun = false; timer.Stop(); stop?.Cancel();
         var tasks = new[] { RunQueueCommand.ExecutionTask, AddCommand.ExecutionTask, ResumeSelectedCommand.ExecutionTask,
-            CancelSelectedCommand.ExecutionTask, ClearHistoryCommand.ExecutionTask, RefreshCommand.ExecutionTask, SaveDefaultsCommand.ExecutionTask, AssignCategoryCommand.ExecutionTask, RetryQueueSaveCommand.ExecutionTask };
+            CancelSelectedCommand.ExecutionTask, ClearHistoryCommand.ExecutionTask, RefreshCommand.ExecutionTask, SaveDefaultsCommand.ExecutionTask, AssignCategoryCommand.ExecutionTask, RetryQueueSaveCommand.ExecutionTask, EditSelectedCommand.ExecutionTask, SaveEditedCommand.ExecutionTask };
         try { await Task.WhenAll(tasks.Where(t => t is not null).Cast<Task>()); }
         catch (Exception ex) when (ex is not OutOfMemoryException) { Status = Text("QueueSaveError"); }
         if (queue is not null)

@@ -34,3 +34,5 @@ The WPF list shows filename, state, last accepted/terminal progress, priority, s
 ## Evidence
 
 Core tests verify priority/aging, terminal transitions, future readiness, exact-offset parsing and rejection of ambiguous schedules. Coordinator tests cover ordering, serialization, cancellation completion, duplicate runner/destination rejection, explicit retries, failed-job progression, interrupted-state recovery and record-only history removal. SQLite tests verify encrypted round-trip, cross-instance lease rejection and tamper rejection without deleting records. An actual loopback HTTP download exercises scheduling, protected persistence, engine checkpoints, final hash and restored Completed history. Windows UI execution and native DPAPI remain separately tracked.
+
+Subsequent update: ADR 0017 adds policy-only editing and explicit saved-path replacement for inactive unfinished jobs; cancel/re-add is no longer required for changing a connection selection.

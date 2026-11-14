@@ -28,6 +28,7 @@
                 <TextBlock Text="{DynamicResource EmptyQueueLabel}" TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <WrapPanel Grid.Row="3" IsEnabled="{Binding IsReady}">
+                <Button Content="{DynamicResource EditSelectedLabel}" Command="{Binding EditSelectedCommand}"/>
                 <Button Content="{DynamicResource AssignCategoryLabel}" Command="{Binding AssignCategoryCommand}"/>
                 <Button Content="{DynamicResource ResumeSelectedLabel}" Command="{Binding ResumeSelectedCommand}"/>
                 <Button Content="{DynamicResource CancelSelectedLabel}" Command="{Binding CancelSelectedCommand}"/>

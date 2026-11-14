@@ -85,6 +85,19 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
         finally { gate.Release(); }
     }
 
+    public async Task UpdateSettingsAsync(Guid id, QueueJobSettings settings, CancellationToken token = default)
+    {
+        await gate.WaitAsync(token);
+        try
+        {
+            RequireWritable();
+            var changed = settings.Apply(jobs[id]);
+            store.Save(changed);
+            jobs[id] = changed;
+        }
+        finally { gate.Release(); }
+    }
+
     public async Task SetCategoryAsync(Guid id, string category, CancellationToken token = default)
     {
         category = DownloadCategory.Normalize(category);
