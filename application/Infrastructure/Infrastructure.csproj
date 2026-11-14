@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><RootNamespace>DownloadManager.Infrastructure</RootNamespace></PropertyGroup>
+  <ItemGroup><InternalsVisibleTo Include="Integration.Tests" /></ItemGroup>
+</Project>

@@ -8,12 +8,12 @@
 - Initial architecture: x64. ARM64 and x86 are not baseline commitments.
 - UI: WPF, English, modern Fluent-inspired appearance.
 - Repository layout: production projects inside `application/`; no `src/` directory.
-- Current deliverable: this specification only. Application development has not started.
+- Current deliverable: implementation authorized on 2026-11-14; Phase 0 foundation and Phase 1 networking harness in progress; Windows hardware acceptance pending. See docs/STATUS.md for implemented behavior and test evidence.
 - Product name: not selected. `DownloadManager` is a working technical name.
 
 This document is self-contained. An implementation agent must not require the original conversation to understand the requirements. It records the approved scope, technical rules, delivery sequence, acceptance criteria, and unresolved implementation details.
 
-The user approved the plan, but the current request is to document it. Do not interpret reading this document alone as an instruction to begin implementation. Once the user instructs an agent to implement the project, carry out the authorized phases without repeatedly requesting approval for routine reversible engineering decisions.
+The original request was documentation only. The user subsequently authorized implementation on 2026-11-14; reading this document alone does not authorize unrelated scope. Once the user instructs an agent to implement the project, carry out the authorized phases without repeatedly requesting approval for routine reversible engineering decisions.
 
 ## 1. Product objective
 
@@ -717,7 +717,7 @@ The list is intentionally unchecked; this document does not claim application wo
 
 - [ ] Confirm minimum Windows builds and SDK/runtime compatibility.
 - [ ] Create the approved solution layout under `application/` after implementation is authorized.
-- [ ] Record interface-routing and DNS design decisions.
+- [x] Record interface-routing and DNS design decisions (ADR 0002; per-path DNS remains open).
 - [ ] Prove independent egress on real Windows hardware.
 - [ ] Define interval and lease invariants in executable tests.
 - [ ] Build the controllable HTTP test server.
