@@ -8,6 +8,7 @@ Independent Windows 10/11 x64 download manager, under active development. The [a
 - Real range probing, representation checks across selected paths and a bounded lazy range allocator.
 - 1–128 workers with measured per-worker range sizing. Faster workers claim new work; active-tail splitting is not yet implemented.
 - Validated range responses and offset writes, bounded retry/backoff, header/read deadlines and 429/503 handling.
+- Bounded HTTP(S) redirects with loop/downgrade rejection and final-URI identity checks before writing or resuming.
 - Pause/cancel, SQLite checkpoints, hash-verified resume and final size/optional authoritative SHA-256 checks.
 - Safe sequential fallback when ranges/strong validators are unavailable (restart rather than resume).
 - WPF URL/destination form, connection selection, concurrency setting and live progress.
@@ -35,7 +36,7 @@ Linux can compile the WPF application using Windows targeting packs and run engi
 dotnet run --project application/App.Wpf -c Release
 ```
 
-Enter a direct HTTP(S) URL and a new destination filename. Select desired addresses under Connections, set workers to at least the number of selected addresses, then Add to queue. Repeat for additional files and click Start queue. System-route mode uses OS routing instead of the selected interfaces. No proxy, automatic redirect, auth/cookie capture or TLS verification bypass is enabled. Existing destinations are never overwritten. Select a Paused or Failed entry and click Requeue paused / failed, then Start queue, to resume. Each entry retains its own source, destination and connection settings. If the representation changes, preserve the partial file and choose another destination. A stopped sequential job restarts from zero.
+Enter a direct HTTP(S) URL and a new destination filename. Select desired addresses under Connections, set workers to at least the number of selected addresses, then Add to queue. Repeat for additional files and click Start queue. System-route mode uses OS routing instead of the selected interfaces. The engine follows up to eight validated HTTP(S) redirects; HTTPS downgrades are rejected. No proxy, auth/cookie capture or TLS verification bypass is enabled. Existing destinations are never overwritten. Select a Paused or Failed entry and click Requeue paused / failed, then Start queue, to resume. Each entry retains its own source, destination and connection settings. If the representation changes, preserve the partial file and choose another destination. A stopped sequential job restarts from zero.
 
 Queue records are saved under `%LOCALAPPDATA%/MultiInternetDownloadManager/queue.sqlite`, protected for the current Windows user. A second app instance cannot open the same queue. Source URLs and signed query strings are not stored in plaintext. Keep the original Windows user profile to retain decryption access. Failed decryption preserves the store and disables queue actions.
 
@@ -74,3 +75,7 @@ Compare the file SHA-256 with `/fixture-info`. This verifies the engine using th
 A segmented job uses `destination.part` plus `destination.part.sqlite` (and SQLite WAL/SHM files while active). Do not edit or delete these during a job. Each completed range is flushed before its metadata transaction; resume hashes saved bytes and redownloads damaged extents. An uncertain failed extent is never marked complete. Authoritative checksum mismatch prevents finalization. No plaintext source URL or credentials are stored in checkpoint metadata.
 
 The Core stays independent of WPF, SQLite, Windows interop and concrete HTTP. Production projects live in `application/`. Decisions, limitations and validation evidence are recorded under `docs/`.
+
+## Redirected sources
+
+The engine preserves range headers through a bounded redirect chain and validates the final resource URI, strong ETag and length. Every selected path and range must resolve to the same final resource. Changing that final URI prevents reuse of old redirected checkpoints even if ETag and size match; preserve the partial state and choose another destination. The NetworkProbe remains a single-response diagnostic and intentionally does not follow redirects. Custom engine clients must disable handler redirects/cookies/decompression and have no default headers; per-hop requests use a protocol-header allowlist.

@@ -11,7 +11,7 @@ namespace DownloadManager.Infrastructure.Http;
 public static class RangeTransfer
 {
     public static async Task<long> WriteAsync(HttpClient client, Uri source, ByteRange range,
-        long resourceLength, string strongETag, SafeFileHandle destination, CancellationToken cancellationToken, PayloadRateLimiter? rateLimiter = null)
+        long resourceLength, string strongETag, SafeFileHandle destination, CancellationToken cancellationToken, PayloadRateLimiter? rateLimiter = null, Uri? expectedResponseUri = null)
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(range);
@@ -36,6 +36,8 @@ public static class RangeTransfer
         request.Headers.IfRange = new RangeConditionHeaderValue(tag);
         request.Headers.AcceptEncoding.ParseAdd("identity");
         using var response = await HttpTransferPolicy.SendAsync(client, request, cancellationToken);
+        if (HttpTransferPolicy.ResponseUri(response) != HttpTransferPolicy.CanonicalUri(expectedResponseUri ?? source))
+            throw new InvalidDataException("The range response belongs to a different resource URI.");
         ValidateResponse(response, range, resourceLength, tag);
         await using var body = await response.Content.ReadAsStreamAsync(cancellationToken);
         var buffer = ArrayPool<byte>.Shared.Rent(65536);

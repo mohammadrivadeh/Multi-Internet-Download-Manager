@@ -15,6 +15,7 @@ The user explicitly requested on 2026-11-14 that implementation continue without
 | Close window during transfer | Pending user execution | All writers finish before process exit; successful next-run resume |
 | Process kill / power failure during flush or SQLite commit | Pending fault injection | Conservative recovery; no false completion |
 | Disk full, removed destination drive, access denied | Pending fault injection | Safe stop, no finalized corrupt output |
+| Redirects on real HTTPS/CDN endpoints | Pending Windows/TLS execution | Trusted HTTPS chains, downgrade rejection, final-URI consistency and cancellation on selected interfaces |
 | Trusted TLS, invalid TLS and captive portal | Pending Windows acceptance | Correct success/failure with certificate validation intact |
 | Multi-path throughput and real 16/32/64 request benchmarks | Pending hardware benchmark | Measured traffic and resources; no synthetic aggregation claims |
 | Speed caps on real selected interfaces | Pending Windows benchmark | Aggregate payload pacing, low-cap pause responsiveness and distinction from wire/billing traffic |

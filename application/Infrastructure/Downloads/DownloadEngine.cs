@@ -29,7 +29,7 @@ public sealed class DownloadEngine
         var resource = await RetryAsync(() => ResourceProbe.ProbeAsync(transports[0], source, cancellationToken), options.RetryLimit, cancellationToken);
         if (!resource.CanSegment)
         {
-            await DownloadSequentialAsync(source, destination, part, database, transports[0], resource.Length, options, progress, rateLimiter, cancellationToken);
+            await DownloadSequentialAsync(source, destination, part, database, transports[0], resource, options, progress, rateLimiter, cancellationToken);
             return;
         }
         var length = resource.Length!.Value;
@@ -43,7 +43,7 @@ public sealed class DownloadEngine
             throw new InvalidDataException("A partial file exists without recovery metadata. Preserve it and choose a new destination.");
         var resumed = File.Exists(part);
         using (var handle = File.OpenHandle(part, resumed ? FileMode.Open : FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, FileOptions.Asynchronous))
-        using (var store = new CheckpointStore(database, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source.AbsoluteUri))), length, resource.ETag!))
+        using (var store = new CheckpointStore(database, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source.AbsoluteUri + (HttpTransferPolicy.CanonicalUri(source) == resource.EffectiveUri ? "" : "\n" + resource.EffectiveUri.AbsoluteUri)))), length, resource.ETag!))
         using (var checkpoint = new SemaphoreSlim(1))
         using (var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
         {
@@ -81,7 +81,7 @@ public sealed class DownloadEngine
                         lock (allocationLock) range = pool.Take(target);
                         if (range is null) return;
                         var watch = Stopwatch.StartNew();
-                        await RetryAsync(() => RangeTransfer.WriteAsync(transport, source, range, length, resource.ETag!, handle, stop.Token, rateLimiter), options.RetryLimit, stop.Token);
+                        await RetryAsync(() => RangeTransfer.WriteAsync(transport, source, range, length, resource.ETag!, handle, stop.Token, rateLimiter, resource.EffectiveUri), options.RetryLimit, stop.Token);
                         var hash = await HashAsync(handle, range.Start, range.Length, stop.Token) ?? throw new EndOfStreamException();
                         await checkpoint.WaitAsync(stop.Token);
                         try
@@ -107,9 +107,10 @@ public sealed class DownloadEngine
     }
 
     private static async Task DownloadSequentialAsync(Uri source, string destination, string part, string database, HttpClient client,
-        long? expectedLength, DownloadOptions options, IProgress<DownloadProgress>? progress, PayloadRateLimiter? rateLimiter, CancellationToken token)
+        RemoteResource resource, DownloadOptions options, IProgress<DownloadProgress>? progress, PayloadRateLimiter? rateLimiter, CancellationToken token)
     {
         if (File.Exists(part) || File.Exists(database)) throw new IOException("Existing partial state cannot be safely resumed in sequential mode.");
+        var expectedLength = resource.Length;
         var created = false;
         try
         {
@@ -120,6 +121,8 @@ public sealed class DownloadEngine
                 request.Headers.AcceptEncoding.ParseAdd("identity");
                 using var response = await HttpTransferPolicy.SendAsync(client, request, token);
                 HttpTransferPolicy.RequireSuccess(response);
+                if (HttpTransferPolicy.ResponseUri(response) != resource.EffectiveUri)
+                    throw new InvalidDataException("The sequential resource URI changed after probing.");
                 if (response.StatusCode != HttpStatusCode.OK || response.Content.Headers.ContentEncoding.Any(e => !e.Equals("identity", StringComparison.OrdinalIgnoreCase)))
                     throw new InvalidDataException("Unexpected sequential representation.");
                 var total = response.Content.Headers.ContentLength;
