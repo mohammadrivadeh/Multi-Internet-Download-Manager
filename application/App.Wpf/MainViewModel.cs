@@ -27,6 +27,7 @@ public sealed record QueueRow(QueueJob Job)
     public string Schedule => Job.NotBefore?.ToString("yyyy-MM-dd HH:mm zzz") ?? "";
     public string Progress => Job.TotalBytes is { } total ? $"{Job.CompletedBytes:N0} / {total:N0}" : $"{Job.CompletedBytes:N0}";
     public string Failure => Job.FailureCode is { } code ? (string)System.Windows.Application.Current.FindResource($"QueueFailure{code}") : "";
+    public string RateLimit => Job.Options.BytesPerSecondLimit is { } limit ? (limit / 1024d).ToString("N1") : (string)System.Windows.Application.Current.FindResource("UnlimitedLabel");
     public int Priority => Job.Priority;
 }
 
@@ -46,6 +47,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string destination = "";
     [ObservableProperty] private string workerCount = "4";
     [ObservableProperty] private string expectedSha256 = "";
+    [ObservableProperty] private string speedLimitKiB = "0";
     [ObservableProperty] private string priority = "0";
     [ObservableProperty] private string scheduledStart = "";
     [ObservableProperty] private bool useSystemRoute;
@@ -125,14 +127,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         try
         {
             if (!Uri.TryCreate(Url, UriKind.Absolute, out var source) || string.IsNullOrWhiteSpace(Destination)
-                || !int.TryParse(WorkerCount, out var workers) || !int.TryParse(Priority, out var priorityValue))
+                || !int.TryParse(WorkerCount, out var workers) || !int.TryParse(Priority, out var priorityValue)
+                || !long.TryParse(SpeedLimitKiB, out var speedKiB) || speedKiB is < 0 or > 1048576)
                 throw new ArgumentException();
             if (File.Exists(Destination)) { Status = Text("DestinationExistsStatus"); return; }
             var job = new QueueJob
             {
                 Source = source, Destination = Destination, UseSystemRoute = UseSystemRoute,
                 Paths = Paths.Where(p => p.Selected).Select(p => new QueuedPath(p.Path.AdapterId, p.Path.SourceAddress.ToString())).ToArray(),
-                Options = new DownloadOptions { Workers = workers, ExpectedSha256 = string.IsNullOrWhiteSpace(ExpectedSha256) ? null : ExpectedSha256.Trim() },
+                Options = new DownloadOptions { Workers = workers, BytesPerSecondLimit = speedKiB == 0 ? null : speedKiB * 1024, ExpectedSha256 = string.IsNullOrWhiteSpace(ExpectedSha256) ? null : ExpectedSha256.Trim() },
                 Priority = priorityValue, NotBefore = QueueScheduling.ParseStart(ScheduledStart)
             };
             job.Validate();

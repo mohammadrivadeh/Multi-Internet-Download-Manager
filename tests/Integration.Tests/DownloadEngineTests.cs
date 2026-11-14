@@ -166,6 +166,34 @@ public class DownloadEngineTests
         });
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task DownloadCapIsSharedByAllWorkersAndAppliesToSequentialFallback(bool ranged)
+    {
+        await InDirectoryAsync(async target =>
+        {
+            using var client = new HttpClient(new FixtureHandler { SupportsRanges = ranged });
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            await new DownloadEngine().DownloadAsync(new("http://fixture.invalid/file"), target, [client],
+                Options with { Workers = 4, BytesPerSecondLimit = Fixture.Length }, cancellationToken: deadline.Token);
+            Assert.True(watch.Elapsed >= TimeSpan.FromSeconds(0.98), "The complete payload must not be delivered faster than its shared one-second budget.");
+            Assert.Equal(Fixture, await File.ReadAllBytesAsync(target));
+        });
+    }
+
+    [Fact]
+    public async Task BandwidthWaitRespondsImmediatelyToCancellation()
+    {
+        var limiter = new DownloadManager.Infrastructure.Http.PayloadRateLimiter(1);
+        using var stop = new CancellationTokenSource();
+        var wait = limiter.WaitAsync(1, stop.Token).AsTask();
+        Assert.False(wait.IsCompleted);
+        stop.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => wait);
+    }
+
     private static async Task InDirectoryAsync(Func<string, Task> test)
     {
         var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));

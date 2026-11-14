@@ -23,6 +23,8 @@
                 <TextBox x:Name="WorkersInput" Text="{Binding WorkerCount, UpdateSourceTrigger=PropertyChanged}" Width="110" HorizontalAlignment="Left" AutomationProperties.Name="{DynamicResource WorkersLabel}"/>
                 <Label Content="{DynamicResource ChecksumLabel}" Target="{Binding ElementName=ChecksumInput}"/>
                 <TextBox x:Name="ChecksumInput" Text="{Binding ExpectedSha256, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource ChecksumLabel}"/>
+                <Label Content="{DynamicResource SpeedLimitLabel}" Target="{Binding ElementName=SpeedLimitInput}"/>
+                <TextBox x:Name="SpeedLimitInput" Text="{Binding SpeedLimitKiB, UpdateSourceTrigger=PropertyChanged}" Width="150" HorizontalAlignment="Left"/>
                 <Label Content="{DynamicResource PriorityLabel}" Target="{Binding ElementName=PriorityInput}"/>
                 <TextBox x:Name="PriorityInput" Text="{Binding Priority, UpdateSourceTrigger=PropertyChanged}" Width="110" HorizontalAlignment="Left"/>
                 <Label Content="{DynamicResource ScheduleLabel}" Target="{Binding ElementName=ScheduleInput}"/>
@@ -50,6 +52,7 @@
                     <DataGridTextColumn Header="{DynamicResource FileColumn}" Binding="{Binding Filename}" Width="*"/>
                     <DataGridTextColumn Header="{DynamicResource StateColumn}" Binding="{Binding State}" Width="100"/>
                     <DataGridTextColumn Header="{DynamicResource ProgressLabel}" Binding="{Binding Progress}" Width="140"/>
+                    <DataGridTextColumn Header="{DynamicResource SpeedLimitColumn}" Binding="{Binding RateLimit}" Width="100"/>
                     <DataGridTextColumn Header="{DynamicResource PriorityColumn}" Binding="{Binding Priority}" Width="70"/>
                     <DataGridTextColumn Header="{DynamicResource ScheduleColumn}" Binding="{Binding Schedule}" Width="180"/>
                     <DataGridTextColumn Header="{DynamicResource FailureColumn}" Binding="{Binding Failure}" Width="220"/>

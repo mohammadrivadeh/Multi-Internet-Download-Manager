@@ -8,7 +8,7 @@
 - Initial architecture: x64. ARM64 and x86 are not baseline commitments.
 - UI: WPF, English, modern Fluent-inspired appearance.
 - Repository layout: production projects inside `application/`; no `src/` directory.
-- Current deliverable: implementation authorized on 2026-11-14; functional engine, SQLite recovery, WPF shell and protected queue/history/one-time scheduling implemented; later roadmap features and Windows acceptance remain outstanding. See docs/STATUS.md for implemented behavior and test evidence.
+- Current deliverable: implementation authorized on 2026-11-14; functional engine, SQLite recovery, WPF shell, protected queue/history, one-time scheduling and per-download speed caps implemented; later roadmap features and Windows acceptance remain outstanding. See docs/STATUS.md for implemented behavior and test evidence.
 - Product name: not selected. `DownloadManager` is a working technical name.
 
 This document is self-contained. An implementation agent must not require the original conversation to understand the requirements. It records the approved scope, technical rules, delivery sequence, acceptance criteria, and unresolved implementation details.

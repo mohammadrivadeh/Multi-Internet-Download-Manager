@@ -56,7 +56,7 @@
     <sys:String x:Key="QueueLoadError">Queue storage is unavailable, protected by another account, or already open in another app instance. Existing data is preserved.</sys:String>
     <sys:String x:Key="QueueSaveError">The queue could not be saved. Stop and check access and disk space; existing files are preserved.</sys:String>
     <sys:String x:Key="AddedStatus">Added to queue. Start the queue to process ready jobs.</sys:String>
-    <sys:String x:Key="QueueInputError">Check the URL, destination, selected paths, checksum, workers, priority and schedule. A scheduled time must include an offset, for example 2026-11-15T09:00:00+03:30.</sys:String>
+    <sys:String x:Key="QueueInputError">Check the URL, destination, selected paths, checksum, workers, speed limit, priority and schedule. A scheduled time must include an offset, for example 2026-11-15T09:00:00+03:30.</sys:String>
     <sys:String x:Key="QueueConflictError">Another unfinished job owns this destination, or the queue is full. Clear terminal history or choose another destination.</sys:String>
     <sys:String x:Key="QueueActionError">This action is unavailable in the selected state. Stop the queue and wait for the active job to pause first.</sys:String>
     <sys:String x:Key="QueueWaitingStatus">Ready jobs processed. The started queue will check for scheduled work while the app remains open.</sys:String>
@@ -66,4 +66,7 @@
     <sys:String x:Key="QueueFailureStorage">Check destination access and disk space</sys:String>
     <sys:String x:Key="QueueFailureTimeout">Response timed out</sys:String>
     <sys:String x:Key="QueueFailureFailure">Review connections and job settings</sys:String>
+    <sys:String x:Key="SpeedLimitLabel">Download speed limit (KiB/s; 0 = unlimited)</sys:String>
+    <sys:String x:Key="SpeedLimitColumn">Limit KiB/s</sys:String>
+    <sys:String x:Key="UnlimitedLabel">Unlimited</sys:String>
 </ResourceDictionary>

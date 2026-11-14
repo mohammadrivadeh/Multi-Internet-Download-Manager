@@ -13,14 +13,15 @@ Updated 2026-11-14. The user authorized merging to main and continuing without w
 - WPF form and persistent queue/history: explicit per-job URL/destination/path/worker/checksum settings, priorities, scheduled starts, filename search and state filters.
 - Windows DPAPI-protected queue payloads, a single-instance database lease, explicit requeue/cancel and record-only history clearing. Interrupted Running entries recover Paused.
 - One active file at a time, aging-based ready selection, five-second due-job checks after Start queue, and awaited download/save/initialization shutdown.
+- Optional per-job payload speed cap shared across all ranged workers/retries and sequential fallback; saved in the protected job configuration and displayed in KiB/s.
 - Console probe/download harnesses, synthetic fixture server and Linux/Windows GitHub Actions build/test workflow.
-- ADRs 0001–0006, architecture notes, acceptance procedures and backlog.
+- ADRs 0001–0007, architecture notes, acceptance procedures and backlog.
 
 ## Validation completed on the current machine
 
 - Release solution build, all eight projects: **0 warnings, 0 errors**.
-- Automated tests: **77 passed, 0 failed, 1 skipped** (23 Core passed; 54 integration passed, 1 Windows-only DPAPI skipped).
-- Tested: interval boundaries, randomized exact coverage, stale snapshots, HTTP request/response behavior, invalid identity/header rejection before writes, short/oversized bodies, cancellation, sparse offset above 4 GiB, complete downloads, SQLite resume, damaged checkpoint data repair, changed-resource rejection, differing representations across paths, sequential fallback, checksum failure, destination collision including a race at finalization, and long Retry-After refusal without retrying early. Queue tests additionally cover priority aging, explicit-offset schedules, state transitions, encrypted persistence/tamper rejection, exclusive ownership, duplicate destinations/runners, cancellation ordering, failure progression, restart recovery and protected history after a real scheduled HTTP transfer.
+- Automated tests: **86 passed, 0 failed, 1 skipped** (29 Core passed; 57 integration passed, 1 Windows-only DPAPI skipped).
+- Tested: interval boundaries, randomized exact coverage, stale snapshots, HTTP request/response behavior, invalid identity/header rejection before writes, short/oversized bodies, cancellation, sparse offset above 4 GiB, complete downloads, SQLite resume, damaged checkpoint data repair, changed-resource rejection, differing representations across paths, sequential fallback, checksum failure, destination collision including a race at finalization, and long Retry-After refusal without retrying early. Queue tests additionally cover priority aging, explicit-offset schedules, state transitions, encrypted persistence/tamper rejection, exclusive ownership, duplicate destinations/runners, cancellation ordering, failure progression, restart recovery and protected history after a real scheduled HTTP transfer. Rate-policy tests cover shared concurrent reservations, no idle credit, aggregate engine delivery pacing in segmented/sequential modes, cancellation and saved cap settings.
 - Tests configured at 16, 32 and 64 workers verified more than eight overlapping simulated requests and correct full output. These are correctness tests, not speed benchmarks or real interface aggregation.
 - Real local end-to-end smoke: ASP.NET fixture server → HTTP probe → range transfer → SQLite checkpoints → final file; compared with authoritative fixture SHA-256 and verified sidecar cleanup. A 16-worker configuration was used; the small fixture needs only one default-sized range, so this smoke does not establish 16 concurrent network requests.
 - Windows x64 WPF portable build cross-published successfully. Requires .NET 10 Desktop Runtime x64. Not executed on Windows.
@@ -36,7 +37,7 @@ Updated 2026-11-14. The user authorized merging to main and continuing without w
 | Phase 2: single-path engine | Initial full-file engine, validated ranges and sequential fallback implemented | Redirect policy, richer failure diagnostics, auth/context, more failure-server cases |
 | Phase 3: adaptive multi-path | Shared pending pool, adaptive range sizing and selected transports implemented | Active-tail splitting/fenced leases, adaptive concurrency, fairness across jobs, real benchmarks |
 | Phase 4: durable recovery | SQLite checkpoint ordering, hashed resume and finalization implemented | Process-kill/power-loss and disk-failure injection, migrations beyond schema 1, large checkpoint optimization |
-| Phase 5: WPF base product | Functional desktop, protected queue/history, priority, one-time start scheduling, search/filter implemented | Categories, speed/quota policy, recurring schedule windows, concurrent-job fairness, tray, notifications, settings UI, accessibility/DPI acceptance, installer |
+| Phase 5: WPF base product | Functional desktop, protected queue/history, priority, one-time start scheduling, search/filter and per-download aggregate speed cap implemented | Categories, per-path caps/accounting quotas, recurring schedule windows, concurrent-job fairness, tray, notifications, settings UI, accessibility/DPI acceptance, installer |
 | Phase 6: browser integration | Not implemented | Extensions, native messaging, minimal protected request context and expired-link refresh |
 | Phase 7: advanced modules | Not implemented | Supported-site non-DRM media, HLS/DASH, FTP/FTPS, Site Grabber, sync and antivirus integration |
 
@@ -61,4 +62,9 @@ No claim is made that all phases or IDM feature parity are complete. No routes, 
 - `5cb2694`: validated range transfer, initially pushed to work.
 - Both commits fast-forward merged and pushed to main at the user's request.
 - `2463ff5`: functional engine, SQLite recovery and first desktop app, pushed to main.
-- The protected queue/history/scheduling increment follows on main; all nonlocal acceptance remains recorded without blocking development.
+- `fc6d923`: protected queue/history and scheduled starts, pushed to main.
+- Shared speed-cap implementation follows on main; nonlocal acceptance remains recorded without blocking development.
+
+## Speed-cap limitations
+
+The current limit measures accepted application payload, not wire traffic or billing usage. Probe/header/TLS overhead and OS buffering are outside the cap. Multiple file jobs, per-path budgets, live cap changes and consumption quotas remain future work. Small configured caps with large minimum ranges can delay durable progress updates; cancellation still interrupts pending waits and uncertain extents are redownloaded safely.

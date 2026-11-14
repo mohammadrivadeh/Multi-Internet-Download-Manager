@@ -21,13 +21,14 @@ public class QueueTests
         {
             using var protector = new TestProtector();
             var path = Path.Combine(directory, "queue.sqlite");
-            var job = Job();
+            var job = Job() with { Options = new DownloadOptions { BytesPerSecondLimit = 12345 } };
             using (var store = new QueueStore(path, protector))
             {
                 store.Save(job);
                 var loaded = Assert.Single(store.Load());
                 Assert.Equal(job.Source, loaded.Source);
                 Assert.Equal(job.Destination, loaded.Destination);
+                Assert.Equal(12345, loaded.Options.BytesPerSecondLimit);
                 Assert.Throws<IOException>(() => new QueueStore(path, protector));
             }
             var bytes = await File.ReadAllBytesAsync(path);

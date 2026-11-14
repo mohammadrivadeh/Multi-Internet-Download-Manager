@@ -11,7 +11,7 @@ namespace DownloadManager.Infrastructure.Http;
 public static class RangeTransfer
 {
     public static async Task<long> WriteAsync(HttpClient client, Uri source, ByteRange range,
-        long resourceLength, string strongETag, SafeFileHandle destination, CancellationToken cancellationToken)
+        long resourceLength, string strongETag, SafeFileHandle destination, CancellationToken cancellationToken, PayloadRateLimiter? rateLimiter = null)
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(range);
@@ -44,9 +44,10 @@ public static class RangeTransfer
             long written = 0;
             while (written < range.Length)
             {
-                var count = await HttpTransferPolicy.ReadAsync(body, buffer.AsMemory(0, (int)Math.Min(buffer.Length, range.Length - written)), cancellationToken);
+                var count = await HttpTransferPolicy.ReadAsync(body, buffer.AsMemory(0, (int)Math.Min(rateLimiter?.ReadSize ?? buffer.Length, range.Length - written)), cancellationToken);
                 if (count == 0)
                     throw new EndOfStreamException("The range body ended before the expected boundary.");
+                if (rateLimiter is not null) await rateLimiter.WaitAsync(count, cancellationToken);
                 await RandomAccess.WriteAsync(destination, buffer.AsMemory(0, count), range.Start + written, cancellationToken);
                 written += count;
             }

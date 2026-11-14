@@ -13,6 +13,7 @@ Independent Windows 10/11 x64 download manager, under active development. The [a
 - WPF URL/destination form, connection selection, concurrency setting and live progress.
 - Persistent queue/history protected with Windows DPAPI; per-job priority, one-time scheduled start, filename search and state filters.
 - Sequential job processing, explicit requeue of paused/failed jobs and cancellation without deleting data files.
+- A per-download KiB/s speed cap shared across all its workers, with zero meaning unlimited.
 
 Windows routing, WPF execution and real-device performance still require acceptance. Development continues without waiting for those results; see [the acceptance register](docs/testing/PENDING-ACCEPTANCE.md). Tray, recurring schedules, categories, browser capture, media and advanced protocols remain future work in [status](docs/STATUS.md).
 
@@ -39,6 +40,8 @@ Enter a direct HTTP(S) URL and a new destination filename. Select desired addres
 Queue records are saved under `%LOCALAPPDATA%/MultiInternetDownloadManager/queue.sqlite`, protected for the current Windows user. A second app instance cannot open the same queue. Source URLs and signed query strings are not stored in plaintext. Keep the original Windows user profile to retain decryption access. Failed decryption preserves the store and disables queue actions.
 
 Optional priority ranges from -10 to 10. A scheduled start must include a date and offset, for example `2026-11-15T09:00:00+03:30`. Start queue enables ready jobs and checks scheduled work every five seconds **while the app is open**. Stop queue disables scheduled starts and pauses the active transfer. Launching the app does not automatically resume work. Recurring windows, OS wake/start tasks and simultaneous file jobs are not yet implemented.
+
+The Download speed limit field is in **KiB/s** (1024 bytes/s); enter zero for unlimited. The limit is captured per queue entry and applies to combined accepted payload across its workers, including sequential fallback. It does not shape OS/socket traffic or count ISP billing usage. Changes to the form affect newly added entries, not an already queued/running job. At low caps, durable progress can update slowly because checkpoints occur after whole ranges complete.
 
 Search and state filters apply to the queue/history table. Cancel pending entry does not delete partial files; clearing Completed/Cancelled history does not delete downloads. A Running job must first stop and finish cancellation before its entry can be cancelled. To correct an unavailable saved network address, cancel that entry and add the same original URL/destination with the new explicit selection; do not delete valid checkpoints. Queue capacity is 1000 entries including history.
 

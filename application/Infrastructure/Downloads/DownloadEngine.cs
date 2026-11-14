@@ -17,6 +17,7 @@ public sealed class DownloadEngine
     {
         options ??= new();
         options.Validate();
+        var rateLimiter = options.BytesPerSecondLimit is { } limit ? new PayloadRateLimiter(limit) : null;
         ArgumentNullException.ThrowIfNull(transports);
         if (transports.Count == 0 || transports.Any(t => t is null)) throw new ArgumentException("At least one allowed transport is required.", nameof(transports));
         if (transports.Count > options.Workers) throw new ArgumentException("Set the worker count to at least the number of selected transports.", nameof(transports));
@@ -28,7 +29,7 @@ public sealed class DownloadEngine
         var resource = await RetryAsync(() => ResourceProbe.ProbeAsync(transports[0], source, cancellationToken), options.RetryLimit, cancellationToken);
         if (!resource.CanSegment)
         {
-            await DownloadSequentialAsync(source, destination, part, database, transports[0], resource.Length, options, progress, cancellationToken);
+            await DownloadSequentialAsync(source, destination, part, database, transports[0], resource.Length, options, progress, rateLimiter, cancellationToken);
             return;
         }
         var length = resource.Length!.Value;
@@ -80,7 +81,7 @@ public sealed class DownloadEngine
                         lock (allocationLock) range = pool.Take(target);
                         if (range is null) return;
                         var watch = Stopwatch.StartNew();
-                        await RetryAsync(() => RangeTransfer.WriteAsync(transport, source, range, length, resource.ETag!, handle, stop.Token), options.RetryLimit, stop.Token);
+                        await RetryAsync(() => RangeTransfer.WriteAsync(transport, source, range, length, resource.ETag!, handle, stop.Token, rateLimiter), options.RetryLimit, stop.Token);
                         var hash = await HashAsync(handle, range.Start, range.Length, stop.Token) ?? throw new EndOfStreamException();
                         await checkpoint.WaitAsync(stop.Token);
                         try
@@ -106,7 +107,7 @@ public sealed class DownloadEngine
     }
 
     private static async Task DownloadSequentialAsync(Uri source, string destination, string part, string database, HttpClient client,
-        long? expectedLength, DownloadOptions options, IProgress<DownloadProgress>? progress, CancellationToken token)
+        long? expectedLength, DownloadOptions options, IProgress<DownloadProgress>? progress, PayloadRateLimiter? rateLimiter, CancellationToken token)
     {
         if (File.Exists(part) || File.Exists(database)) throw new IOException("Existing partial state cannot be safely resumed in sequential mode.");
         var created = false;
@@ -127,8 +128,9 @@ public sealed class DownloadEngine
                 var buffer = new byte[65536];
                 long offset = 0;
                 int count;
-                while ((count = await HttpTransferPolicy.ReadAsync(body, buffer, token)) != 0)
+                while ((count = await HttpTransferPolicy.ReadAsync(body, buffer.AsMemory(0, rateLimiter?.ReadSize ?? buffer.Length), token)) != 0)
                 {
+                    if (rateLimiter is not null) await rateLimiter.WaitAsync(count, token);
                     await RandomAccess.WriteAsync(handle, buffer.AsMemory(0, count), offset, token);
                     offset = checked(offset + count);
                     progress?.Report(new(DownloadStage.Downloading, offset, total, false));
