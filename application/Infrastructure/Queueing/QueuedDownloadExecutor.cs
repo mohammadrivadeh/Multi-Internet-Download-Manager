@@ -10,6 +10,18 @@ public sealed class QueuedDownloadExecutor : IQueuedDownloadExecutor
     public async Task ExecuteAsync(QueueJob job, IProgress<DownloadProgress>? progress, CancellationToken token)
     {
         job.Validate();
+        if (job.DailyWindow is null) { await ExecuteCoreAsync(job, progress, token); return; }
+        if (!job.DailyWindow.IsOpen(DateTimeOffset.UtcNow)) throw new TransferWindowClosedException();
+        using var window = CancellationTokenSource.CreateLinkedTokenSource(token);
+        window.CancelAfter(job.DailyWindow.Remaining(DateTimeOffset.UtcNow));
+        try { await ExecuteCoreAsync(job, progress, window.Token); }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested && window.IsCancellationRequested)
+        { throw new TransferWindowClosedException(); }
+    }
+
+    private static async Task ExecuteCoreAsync(QueueJob job, IProgress<DownloadProgress>? progress, CancellationToken token)
+    {
+        job.Validate();
         using var system = job.UseSystemRoute ? SystemRouteTransport.Create() : null;
         if (system is not null)
         {
@@ -29,7 +41,7 @@ public sealed class QueuedDownloadExecutor : IQueuedDownloadExecutor
                 sessions.Add(new(path, catalog));
             }
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(sessions.Select(s => s.Invalidated).Append(token).ToArray());
-            await new DownloadEngine().DownloadAsync(job.Source, job.Destination, sessions.Select(s => s.Client).ToArray(), job.Options, progress, linked.Token);
+            await new DownloadEngine().DownloadAsync(job.Source, job.Destination, sessions.Select(s => s.Client).ToArray(), job.Options, progress, linked.Token, job.Paths.Select(p => p.BytesPerSecondLimit).ToArray());
         }
         finally { foreach (var session in sessions) session.Dispose(); }
     }

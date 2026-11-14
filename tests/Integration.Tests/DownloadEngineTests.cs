@@ -229,6 +229,23 @@ public class DownloadEngineTests
         });
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task PathCapIsSharedByItsWorkersAndWorksWithSequentialFallback(bool ranged)
+    {
+        await InDirectoryAsync(async target =>
+        {
+            using var client = new HttpClient(new FixtureHandler { SupportsRanges = ranged });
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            await new DownloadEngine().DownloadAsync(new("http://fixture.invalid/file"), target, [client], Options,
+                cancellationToken: timeout.Token, transportSpeedLimits: new long?[] { Fixture.Length });
+            Assert.True(watch.Elapsed >= TimeSpan.FromSeconds(0.98));
+            Assert.Equal(Fixture, await File.ReadAllBytesAsync(target));
+        });
+    }
+
     private static async Task InDirectoryAsync(Func<string, Task> test)
     {
         var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));

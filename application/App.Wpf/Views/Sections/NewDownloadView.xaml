@@ -6,7 +6,7 @@
                 <TextBlock Text="{DynamicResource ConnectionsLabel}" FontSize="18" FontWeight="SemiBold" Margin="0,12,0,6"/>
                 <Button Content="{DynamicResource RefreshLabel}" Command="{Binding RefreshCommand}" HorizontalAlignment="Left"/>
                 <ListBox ItemsSource="{Binding Paths}" MaxHeight="150" VirtualizingPanel.IsVirtualizing="True" ScrollViewer.CanContentScroll="True" BorderThickness="0">
-                    <ListBox.ItemTemplate><DataTemplate><CheckBox IsChecked="{Binding Selected}" Content="{Binding Label}" Padding="4"/></DataTemplate></ListBox.ItemTemplate>
+                    <ListBox.ItemTemplate><DataTemplate><DockPanel><TextBox DockPanel.Dock="Right" Width="76" Text="{Binding SpeedLimitKiB, UpdateSourceTrigger=PropertyChanged}" ToolTip="{DynamicResource PathSpeedLimitLabel}" AutomationProperties.Name="{DynamicResource PathSpeedLimitLabel}"/><CheckBox IsChecked="{Binding Selected}" Content="{Binding Label}" Padding="4"/></DockPanel></DataTemplate></ListBox.ItemTemplate>
                 </ListBox>
                 <CheckBox IsChecked="{Binding UseSystemRoute}" Content="{DynamicResource SystemRouteLabel}" Margin="0,12"/>
                 <Label Content="{DynamicResource WorkersLabel}" Target="{Binding ElementName=WorkersInput}"/>
@@ -19,6 +19,11 @@
                 <TextBox x:Name="CategoryInput" Text="{Binding Category, UpdateSourceTrigger=PropertyChanged}" MaxLength="64"/>
                 <Label Content="{DynamicResource PriorityLabel}" Target="{Binding ElementName=PriorityInput}"/>
                 <TextBox x:Name="PriorityInput" Text="{Binding Priority, UpdateSourceTrigger=PropertyChanged}" Width="110" HorizontalAlignment="Left"/>
+                <Expander Header="{DynamicResource DailyWindowLabel}"><StackPanel>
+                    <Label Content="{DynamicResource WindowStartLabel}"/><TextBox Text="{Binding WindowStart, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource WindowStartLabel}"/>
+                    <Label Content="{DynamicResource WindowEndLabel}"/><TextBox Text="{Binding WindowEnd, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource WindowEndLabel}"/>
+                    <Label Content="{DynamicResource WindowOffsetLabel}"/><TextBox Text="{Binding WindowOffset, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource WindowOffsetLabel}"/>
+                </StackPanel></Expander>
                 <Label Content="{DynamicResource ScheduleLabel}" Target="{Binding ElementName=ScheduleInput}"/>
                 <TextBox x:Name="ScheduleInput" Text="{Binding ScheduledStart, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource ScheduleLabel}"/>
             </StackPanel>

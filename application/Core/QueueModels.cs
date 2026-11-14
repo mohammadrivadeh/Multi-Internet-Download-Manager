@@ -3,7 +3,7 @@ using System.Globalization;
 namespace DownloadManager.Core;
 
 public enum QueueJobState { Queued, Running, Paused, Completed, Failed, Cancelled }
-public sealed record QueuedPath(string AdapterId, string SourceAddress);
+public sealed record QueuedPath(string AdapterId, string SourceAddress, long? BytesPerSecondLimit = null);
 public sealed record QueueJob
 {
     public Guid Id { get; init; } = Guid.NewGuid();
@@ -15,6 +15,7 @@ public sealed record QueueJob
     public string Category { get; init; } = DownloadCategory.Default;
     public int Priority { get; init; }
     public DateTimeOffset CreatedAt { get; init; }
+    public DailyTransferWindow? DailyWindow { get; init; }
     public DateTimeOffset? NotBefore { get; init; }
     public QueueJobState State { get; init; } = QueueJobState.Queued;
     public long CompletedBytes { get; init; }
@@ -30,10 +31,12 @@ public sealed record QueueJob
         if (Source.AbsoluteUri.Length > 32768 || Destination.Length > 32768 || !Enum.IsDefined(State))
             throw new ArgumentException("Invalid queue payload size or state.");
         Options.Validate();
+        DailyWindow?.Validate();
         _ = DownloadCategory.Normalize(Category);
         if (Priority is < -10 or > 10) throw new ArgumentOutOfRangeException(nameof(Priority));
         if (!UseSystemRoute && (Paths.Count == 0 || Paths.Count > Options.Workers))
             throw new ArgumentException("Select allowed paths and allocate at least one worker per path.");
+        if (Paths.Any(p => p.BytesPerSecondLimit is < 1 or > 1073741824)) throw new ArgumentException("Invalid path speed cap.");
         if (Paths.Count > 128 || Paths.Distinct().Count() != Paths.Count || Paths.Any(p => string.IsNullOrWhiteSpace(p.AdapterId) || p.AdapterId.Length > 1024 || string.IsNullOrWhiteSpace(p.SourceAddress) || p.SourceAddress.Length > 128))
             throw new ArgumentException("Invalid or duplicate queued paths.");
         if (FailureCode is not null and not ("Validation" or "Network" or "Storage" or "Timeout" or "Failure"))
@@ -47,7 +50,7 @@ public sealed record QueueJob
         var allowed = State switch
         {
             QueueJobState.Queued => next is QueueJobState.Running or QueueJobState.Paused or QueueJobState.Cancelled,
-            QueueJobState.Running => next is QueueJobState.Paused or QueueJobState.Completed or QueueJobState.Failed,
+            QueueJobState.Running => next is QueueJobState.Queued or QueueJobState.Paused or QueueJobState.Completed or QueueJobState.Failed,
             QueueJobState.Paused or QueueJobState.Failed => next is QueueJobState.Queued or QueueJobState.Cancelled,
             _ => false
         };
@@ -59,7 +62,7 @@ public sealed record QueueJob
 public static class QueueScheduling
 {
     public static QueueJob? Next(IEnumerable<QueueJob> jobs, DateTimeOffset now) => jobs
-        .Where(j => j.State == QueueJobState.Queued && (j.NotBefore is null || j.NotBefore <= now))
+        .Where(j => j.State == QueueJobState.Queued && (j.NotBefore is null || j.NotBefore <= now) && (j.DailyWindow is null || j.DailyWindow.IsOpen(now)))
         // Aging adds one priority point per five minutes to prevent starvation by newly enqueued jobs.
         .OrderByDescending(j => (long)j.Priority + (long)Math.Max(0, (now - j.CreatedAt).TotalMinutes / 5))
         .ThenBy(j => j.CreatedAt).ThenBy(j => j.Id).FirstOrDefault();

@@ -16,7 +16,7 @@ Independent Windows 10/11 x64 download manager, under active development. The [a
 - Sequential job processing, explicit requeue of paused/failed jobs and cancellation without deleting data files.
 - A per-download KiB/s speed cap shared across all its workers, with zero meaning unlimited.
 
-Windows routing, WPF execution and real-device performance still require acceptance. Development continues without waiting for those results; see [the acceptance register](docs/testing/PENDING-ACCEPTANCE.md). Tray, recurring schedules, media and advanced protocols remain future work in [status](docs/STATUS.md).
+Windows routing, WPF execution and real-device performance still require acceptance. Development continues without waiting for those results; see [the acceptance register](docs/testing/PENDING-ACCEPTANCE.md). Tray, weekday/DST schedules, media and advanced protocols remain future work in [status](docs/STATUS.md).
 
 ## Build and test
 
@@ -40,7 +40,7 @@ Enter a direct HTTP(S) URL and a new destination filename. Select desired addres
 
 Queue records are saved under `%LOCALAPPDATA%/MultiInternetDownloadManager/queue.sqlite`, protected for the current Windows user. A second app instance cannot open the same queue. Source URLs and signed query strings are not stored in plaintext. Keep the original Windows user profile to retain decryption access. Failed decryption preserves the store and disables queue actions.
 
-Optional priority ranges from -10 to 10. A scheduled start must include a date and offset, for example `2026-11-15T09:00:00+03:30`. Start queue enables ready jobs and checks scheduled work every five seconds **while the app is open**. Stop queue disables scheduled starts and pauses the active transfer. Launching the app does not automatically resume work. Recurring windows, OS wake/start tasks and simultaneous file jobs are not yet implemented.
+Optional priority ranges from -10 to 10. A scheduled start must include a date and offset, for example `2026-11-15T09:00:00+03:30`. Start queue enables ready jobs and checks scheduled work every five seconds **while the app is open**. Stop queue disables scheduled starts and pauses the active transfer. Launching the app does not automatically resume work. Optional daily fixed-offset windows can restrict unfinished transfers; weekday/DST rules, OS wake/start tasks and simultaneous file jobs are not yet implemented.
 
 The Download speed limit field is in **KiB/s** (1024 bytes/s); enter zero for unlimited. The limit is captured per queue entry and applies to combined accepted payload across its workers, including sequential fallback. It does not shape OS/socket traffic or count ISP billing usage. Changes to the form affect newly added entries, not an already queued/running job. At low caps, durable progress can update slowly because checkpoints occur after whole ranges complete.
 
@@ -101,3 +101,11 @@ The progress bar includes uniquely accepted bytes in active ranges; the existing
 If a terminal queue save fails, the actual outcome stays visible and is retained for retry. Fix disk/access issues and click **Retry queue save** before closing. New queue mutations/run starts also retry pending outcomes first; history cannot silently discard them. Shutdown makes a final save attempt. A crash while storage remains unavailable can still restore the prior persisted row as Paused; do not delete or overwrite an existing finalized destination to force a retry.
 
 A Completed job may show a checkpoint-cleanup notice if its leftover SQLite sidecar could not be deleted. The finalized file is still successful and protected from overwrite. Close the app before inspecting/removing only the identified sidecar; no downloaded data is deleted by this warning.
+
+## Daily transfer windows
+
+Expand Daily transfer window and enter both HH:mm boundaries plus an explicit offset such as +03:30. Blank boundaries mean unrestricted. Overnight windows are supported; equal boundaries are invalid. The started queue waits outside the window, cancels/awaits active work at its end, and requeues unfinished work for a later opening. A completed file is not downloaded again daily. Explicit Stop pauses the queue instead. The app must remain open; no OS wake task or DST adjustment is provided. The full remaining scope is tracked in docs/REMAINING-WORK.md.
+
+## Per-connection speed limits
+
+Each discovered connection has a KiB/s input beside its selection; zero is unlimited. Add to queue captures this cap with that address. Workers using the same selected path share the path cap, while the download cap still limits their aggregate. System-route mode ignores the selected-path inputs. Existing queued jobs are unchanged by later form edits. These limits govern accepted payload, not OS wire traffic, ISP consumption or persistent data quotas.

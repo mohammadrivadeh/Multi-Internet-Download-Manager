@@ -23,8 +23,9 @@ public partial class MainViewModel
         {
             var paths = await Task.Run(catalog.Discover);
             var selection = Paths.Where(p => p.Selected).Select(p => (p.Path.AdapterId, p.Path.SourceAddress)).ToHashSet();
+            var limits = Paths.ToDictionary(p => (p.Path.AdapterId, p.Path.SourceAddress), p => p.SpeedLimitKiB);
             Paths.Clear();
-            foreach (var path in paths) Paths.Add(new(path) { Selected = selection.Contains((path.AdapterId, path.SourceAddress)) });
+            foreach (var path in paths) Paths.Add(new(path) { Selected = selection.Contains((path.AdapterId, path.SourceAddress)), SpeedLimitKiB = limits.GetValueOrDefault((path.AdapterId, path.SourceAddress), "0") });
         }
         catch (Exception ex) when (ex is not OutOfMemoryException) { Status = Text("DiscoveryError"); }
     }

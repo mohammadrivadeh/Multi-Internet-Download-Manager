@@ -15,12 +15,12 @@ Updated 2026-11-14. The user authorized merging to main and continuing without w
 - One active file at a time, aging-based ready selection, five-second due-job checks after Start queue, and awaited download/save/initialization shutdown.
 - Optional per-job payload speed cap shared across all ranged workers/retries and sequential fallback; saved in the protected job configuration and displayed in KiB/s.
 - Console probe/download harnesses, synthetic fixture server and Linux/Windows GitHub Actions build/test workflow.
-- ADRs 0001–0012, architecture notes, acceptance procedures and backlog.
+- ADRs 0001–0014, architecture notes, acceptance procedures and backlog.
 
 ## Validation completed on the current machine
 
 - Release solution build, all eight projects: **0 warnings, 0 errors**.
-- Automated tests: **122 passed, 0 failed, 1 skipped** (38 Core passed; 84 integration passed, 1 Windows-only DPAPI skipped).
+- Automated tests: **129 passed, 0 failed, 1 skipped** (42 Core passed; 87 integration passed, 1 Windows-only DPAPI skipped).
 - Tested: interval boundaries, randomized exact coverage, stale snapshots, HTTP request/response behavior, invalid identity/header rejection before writes, short/oversized bodies, cancellation, sparse offset above 4 GiB, complete downloads, SQLite resume, damaged checkpoint data repair, changed-resource rejection, differing representations across paths, sequential fallback, checksum failure, destination collision including a race at finalization, and long Retry-After refusal without retrying early. Queue tests additionally cover priority aging, explicit-offset schedules, state transitions, encrypted persistence/tamper rejection, exclusive ownership, duplicate destinations/runners, cancellation ordering, failure progression, restart recovery and protected history after a real scheduled HTTP transfer. Rate-policy tests cover shared concurrent reservations, no idle credit, aggregate engine delivery pacing in segmented/sequential modes, cancellation and saved cap settings.
 - Tests configured at 16, 32 and 64 workers verified more than eight overlapping simulated requests and correct full output. These are correctness tests, not speed benchmarks or real interface aggregation.
 - Real local end-to-end smoke: ASP.NET fixture server → HTTP probe → range transfer → SQLite checkpoints → final file; compared with authoritative fixture SHA-256 and verified sidecar cleanup. A 16-worker configuration was used; the small fixture needs only one default-sized range, so this smoke does not establish 16 concurrent network requests.
@@ -37,7 +37,7 @@ Updated 2026-11-14. The user authorized merging to main and continuing without w
 | Phase 2: single-path engine | Initial full-file engine, validated ranges and sequential fallback implemented | Richer failure diagnostics, auth/context, more failure-server cases |
 | Phase 3: adaptive multi-path | Shared pending pool, adaptive range sizing and selected transports implemented | Active-tail splitting/fenced leases, adaptive concurrency, fairness across jobs, real benchmarks |
 | Phase 4: durable recovery | SQLite checkpoint ordering, hashed resume and finalization implemented | Process-kill/power-loss and disk-failure injection, migrations beyond schema 1, large checkpoint optimization |
-| Phase 5: WPF base product | Functional desktop, protected queue/history, priority, one-time start scheduling, search/filter and per-download aggregate speed cap implemented | Automatic category destination rules, per-path caps/accounting quotas, recurring schedule windows, concurrent-job fairness, tray, notifications, settings UI, accessibility/DPI acceptance, installer |
+| Phase 5: WPF base product | Functional desktop, protected queue/history, priority, one-time start scheduling, search/filter and per-download aggregate speed cap implemented | Automatic category destination rules, persistent consumption quotas/metered accounting, weekday/DST schedule rules, concurrent-job fairness, tray, notifications, settings UI, accessibility/DPI acceptance, installer |
 | Phase 6: browser integration | Excluded by user | No browser extensions, native messaging or capture work |
 | Phase 7: advanced modules | Not implemented | Supported-site non-DRM media, HLS/DASH, FTP/FTPS, sync and antivirus integration |
 
@@ -52,7 +52,7 @@ No claim is made that all phases or IDM feature parity are complete. No routes, 
 - Metadata grows with checkpoint count. The current implementation loads checkpoint rows to verify them; stress tuning and coalesced/streaming recovery remain open.
 - A crash after rename but before database cleanup can leave an orphan sidecar. Existing finalized destinations are never replaced automatically.
 - Closing the window cancels/awaits the queue, pending saves and initialization before releasing the store lease. Tray/background continuation is not implemented.
-- Scheduling requires the app running and Start queue enabled. It is checked at five-second intervals; no OS wake/start or recurring windows are created. Only one file runs at once, with concurrent requests inside that file.
+- Scheduling requires the app running and Start queue enabled. It is checked at five-second intervals; no OS wake/start tasks are created. Optional daily fixed-offset windows now restrict and resume unfinished work. Only one file runs at once, with concurrent requests inside that file.
 - DPAPI persistence is tied to the Windows user profile. Cross-account imports, profile-key recovery and queue encryption on Linux are not implemented. The actual Windows DPAPI regression test is skipped on Linux and configured to execute in Windows CI; no remote CI success is claimed.
 - A crash between finalized-file rename and queue-state commit may leave a Paused history row for an existing destination. That file remains protected from overwrite; reconcile the row manually.
 
@@ -95,3 +95,11 @@ Accepted-byte progress is now separate from checkpointed progress, including max
 ## Review fixes
 
 Fixed terminal persistence errors leaving ghost Running rows: retain true outcomes and pending writes, retry explicitly or before the next mutation/run, and attempt persistence on shutdown. Fixed failed sidecar deletion after successful rename: Completed now carries a persisted cleanup warning rather than failing the file. Fixed truncated/HTTP body errors misclassified as Storage and sub-250ms ETA samples flickering unknown. Seven added regressions pass, including injected failures for all terminal outcomes and full-file cleanup-failure verification. Pending writes remain volatile until a successful save; crashes in that window still need the documented existing-file reconciliation.
+
+## Consolidated remaining work and daily windows
+
+See docs/REMAINING-WORK.md for the complete remaining register. Daily fixed-offset/overnight transfer windows are now captured per queued job, enforced by the executor and persisted across requeues. Window closure awaits cancellation and requeues unfinished work without a busy loop; explicit stop remains a pause. This does not implement recurring duplicate downloads or closed-app scheduling. Remaining roadmap work is explicitly open rather than marked done.
+
+## Per-connection cap increment
+
+Each selected address now captures its own KiB/s cap, protected with its queue entry. A transport's workers share one limiter and combine it with the job limiter. Sequential fallback respects its selected transport's limit. Discovery refresh preserves unsaved settings for unchanged addresses. These are accepted-payload caps, not wire-level shaping or billing quotas. Per-path quota accounting is still open in the remaining-work register.

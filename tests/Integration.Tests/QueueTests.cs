@@ -21,7 +21,7 @@ public class QueueTests
         {
             using var protector = new TestProtector();
             var path = Path.Combine(directory, "queue.sqlite");
-            var job = Job() with { Category = "Documents", Options = new DownloadOptions { BytesPerSecondLimit = 12345 } };
+            var job = Job() with { Category = "Documents", Paths = [new QueuedPath("adapter", "192.0.2.1", 2048)], Options = new DownloadOptions { BytesPerSecondLimit = 12345 } };
             using (var store = new QueueStore(path, protector))
             {
                 store.Save(job);
@@ -29,6 +29,7 @@ public class QueueTests
                 Assert.Equal(job.Source, loaded.Source);
                 Assert.Equal(job.Destination, loaded.Destination);
                 Assert.Equal("Documents", loaded.Category);
+                Assert.Equal(2048, Assert.Single(loaded.Paths).BytesPerSecondLimit);
                 Assert.Equal(12345, loaded.Options.BytesPerSecondLimit);
                 Assert.Throws<IOException>(() => new QueueStore(path, protector));
             }
@@ -351,6 +352,24 @@ public class QueueTests
         var queue = new QueueCoordinator(memory, executor, new TestClock(Now));
         await queue.InitializeAsync(); var job = await queue.EnqueueAsync(Job()); await queue.RunReadyAsync();
         Assert.Equal("Network", memory.Jobs[job.Id].FailureCode);
+    }
+
+    [Fact]
+    public async Task WindowBoundaryRequeuesOnceAndResumesOnNextRunWithoutBusyLoop()
+    {
+        var memory = new MemoryStore(); var calls = 0;
+        var executor = new FakeExecutor((_, _, _) => ++calls == 1 ? Task.FromException(new TransferWindowClosedException()) : Task.CompletedTask);
+        var clock = new TestClock(Now);
+        var queue = new QueueCoordinator(memory, executor, clock);
+        await queue.InitializeAsync();
+        var job = await queue.EnqueueAsync(Job() with { DailyWindow = new DailyTransferWindow(12 * 60, 13 * 60, 0) });
+        await queue.RunReadyAsync();
+        Assert.Equal(1, calls); Assert.Equal(QueueJobState.Queued, memory.Jobs[job.Id].State);
+        clock.Now = Now.AddHours(2);
+        await queue.RunReadyAsync(); Assert.Equal(1, calls);
+        clock.Now = Now.AddDays(1);
+        await queue.RunReadyAsync(); Assert.Equal(2, calls);
+        Assert.Equal(QueueJobState.Completed, memory.Jobs[job.Id].State);
     }
 
     private sealed class MemoryStore : IQueueStore

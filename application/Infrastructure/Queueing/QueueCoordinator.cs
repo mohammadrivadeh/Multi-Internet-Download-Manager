@@ -140,6 +140,7 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
                 var terminal = QueueJobState.Completed;
                 string? failure = null;
                 try { await executor.ExecuteAsync(job, reporter, token); }
+                catch (TransferWindowClosedException) when (!token.IsCancellationRequested) { terminal = QueueJobState.Queued; }
                 catch (OperationCanceledException) { terminal = QueueJobState.Paused; }
                 catch (Exception ex) when (ex is not OutOfMemoryException)
                 {
@@ -167,7 +168,7 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
                     pendingWrites.Remove(job.Id);
                 }
                 finally { gate.Release(); }
-                if (terminal == QueueJobState.Paused) return;
+                if (terminal is QueueJobState.Paused or QueueJobState.Queued) return;
                 // A failed job never loops automatically; the next ready job may proceed.
             }
         }

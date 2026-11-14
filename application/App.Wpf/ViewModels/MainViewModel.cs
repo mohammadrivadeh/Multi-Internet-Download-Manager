@@ -40,6 +40,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string category = DownloadCategory.Default;
     [ObservableProperty] private string categoryFilter = "";
     [ObservableProperty] private string priority = "0";
+    [ObservableProperty] private string windowStart = "";
+    [ObservableProperty] private string windowEnd = "";
+    [ObservableProperty] private string windowOffset = DateTimeOffset.Now.ToString("zzz");
     [ObservableProperty] private string scheduledStart = "";
     [ObservableProperty] private bool useSystemRoute;
     [ObservableProperty] private bool isBusy;

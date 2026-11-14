@@ -15,6 +15,13 @@ public sealed class PayloadRateLimiter
         origin = this.clock.GetTimestamp();
         ReadSize = (int)Math.Clamp(bytesPerSecond / 10, 1, 65536);
     }
+    internal static async Task WaitBothAsync(PayloadRateLimiter? download, PayloadRateLimiter? path, int bytes, CancellationToken token)
+    {
+        if (download is not null && path is not null)
+            await Task.WhenAll(download.WaitAsync(bytes, token).AsTask(), path.WaitAsync(bytes, token).AsTask());
+        else if (download is not null) await download.WaitAsync(bytes, token);
+        else if (path is not null) await path.WaitAsync(bytes, token);
+    }
     public async ValueTask WaitAsync(int receivedBytes, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();

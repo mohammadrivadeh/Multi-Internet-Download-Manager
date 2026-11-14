@@ -32,5 +32,6 @@
     <TextBlock Text="{Binding SelectedJob.Filename}" FontWeight="SemiBold"/>
     <TextBlock Text="{Binding SelectedJob.Destination}" TextWrapping="Wrap"/>
     <TextBlock Text="{Binding SelectedJob.Origin}" TextWrapping="Wrap"/>
+    <TextBlock Text="{Binding SelectedJob.DailyWindow}"/>
     <TextBlock Text="{Binding SelectedJob.Checksum}" TextWrapping="Wrap"/>
 </StackPanel></Expander></Grid></UserControl>

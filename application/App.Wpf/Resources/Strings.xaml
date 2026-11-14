@@ -83,4 +83,9 @@
     <sys:String x:Key="RetryQueueSaveLabel">Retry queue save</sys:String>
     <sys:String x:Key="QueueSavedStatus">Pending queue outcomes saved.</sys:String>
     <sys:String x:Key="CheckpointCleanupNotice">Completed; checkpoint cleanup pending. Keep the finalized download; remove only its leftover sidecar after closing the app.</sys:String>
+    <sys:String x:Key="DailyWindowLabel">Daily transfer window (optional)</sys:String>
+    <sys:String x:Key="WindowStartLabel">Window start (HH:mm)</sys:String>
+    <sys:String x:Key="WindowEndLabel">Window end (HH:mm)</sys:String>
+    <sys:String x:Key="WindowOffsetLabel">Fixed UTC offset (+03:30, for example)</sys:String>
+<sys:String x:Key="PathSpeedLimitLabel">Connection cap for this job (KiB/s; 0 unlimited)</sys:String>
 </ResourceDictionary>
