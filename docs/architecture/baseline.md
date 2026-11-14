@@ -4,10 +4,10 @@ The approved specification remains the requirements source. This document maps i
 
 | Boundary | Responsibility | Current state |
 | --- | --- | --- |
-| Core | Pure domain contracts, range ownership, scheduler policy | ByteRange implemented; other contracts planned |
-| Infrastructure | HTTP, interface discovery/binding, disk, SQLite | Discovery, experimental Windows-bound probe and validated single-range file writes implemented; durable storage/SQLite planned |
-| App.Wpf | Composition, MVVM, resource-backed English UI | Planned |
-| Tests | Core invariants, controlled HTTP behavior, Windows acceptance | Interval and loopback HTTP tests, controlled fixture server and probe CLI implemented; Windows acceptance pending |
+| Core | Pure domain contracts, range ownership, scheduler policy | ByteRange, range allocator, download options/progress implemented; fenced active leases planned |
+| Infrastructure | HTTP, interface discovery/binding, disk, SQLite | Discovery, selected-path pools, HTTP engine, file writes and SQLite checkpoints implemented; Windows acceptance pending |
+| App.Wpf | Composition, MVVM, resource-backed English UI | Initial functional download form implemented; Windows desktop acceptance pending |
+| Tests | Core invariants, controlled HTTP behavior, Windows acceptance | Core, HTTP and SQLite recovery tests, fixture server and CLI harnesses implemented; Windows acceptance pending |
 
 ## Contract rules
 
@@ -15,13 +15,13 @@ The approved specification remains the requirements source. This document maps i
 
 Next contracts are NetworkPath (stable identity distinct from address/index/generation), RangeLease (exclusive writable extent and fencing generation), and RemoteResource (representation validators and range capability). Define them alongside their first consumer rather than creating speculative model classes. Core exposes no concrete HttpClient, SQLite or WPF types.
 
-A single logical owner will serialize each download's allocation changes. Workers will report outcomes; the writer must reject stale leases before reassignment. Durable progress will follow data flush then metadata transaction. Neither behavior is implemented in this slice.
+A locked allocator now serializes each download’s pending allocations. A worker retains its extent until completion or failure, and all writers are awaited before retrying the job. Durable progress follows file flush then a SQLite transaction. Generation-fenced live-tail reassignment is not implemented; no active extent is handed to another worker.
 
 ## Compatibility matrix
 
 | Target | Intended role | Evidence |
 | --- | --- | --- |
-| Linux x64 / .NET 10 | Domain development and HTTP tests | Core validation only |
+| Linux x64 / .NET 10 | Domain, HTTP, SQLite development and WPF cross-compilation | Automated tests and end-to-end HTTP fixture verified; Windows binary produced |
 | Windows 10 22H2 x64 | Initial product acceptance | Pending exact build and current runtime support verification |
 | Supported Windows 11 x64 | Initial product acceptance | Pending exact build and current runtime support verification |
 | ARM64 / x86 | Outside baseline | Unverified |

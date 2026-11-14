@@ -45,7 +45,10 @@ public class RangeTransferTests
     {
         await WithServerAsync(status, headers, "abcdefgh", async (client, file, _, token) =>
         {
-            await Assert.ThrowsAsync<InvalidDataException>(() => RangeTransfer.WriteAsync(client, new Uri("http://fixture.invalid/file"), new ByteRange(4, 12), 20, "\"v1\"", file.SafeFileHandle, token));
+            var transfer = () => RangeTransfer.WriteAsync(client, new Uri("http://fixture.invalid/file"), new ByteRange(4, 12), 20, "\"v1\"", file.SafeFileHandle, token);
+            if (status.StartsWith("416", StringComparison.Ordinal) || status.StartsWith("429", StringComparison.Ordinal))
+                await Assert.ThrowsAsync<HttpStatusFailure>(transfer);
+            else await Assert.ThrowsAsync<InvalidDataException>(transfer);
             var bytes = new byte[20];
             Assert.Equal(20, await RandomAccess.ReadAsync(file.SafeFileHandle, bytes, 0, token));
             Assert.All(bytes, b => Assert.Equal(0xcc, b));

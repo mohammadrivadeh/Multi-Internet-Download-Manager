@@ -1,0 +1,33 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+    <sys:String x:Key="ProgressLabel">Download progress</sys:String>
+    <sys:String x:Key="AppTitle">Multi-Internet Download Manager</sys:String>
+    <sys:String x:Key="Subtitle">Download with your selected connections</sys:String>
+    <sys:String x:Key="UrlLabel">Download URL (HTTP or HTTPS)</sys:String>
+    <sys:String x:Key="DestinationLabel">Destination file</sys:String>
+    <sys:String x:Key="BrowseLabel">Browse…</sys:String>
+    <sys:String x:Key="ConnectionsLabel">Connections</sys:String>
+    <sys:String x:Key="RefreshLabel">Refresh connections</sys:String>
+    <sys:String x:Key="SystemRouteLabel">Use the system route instead of selected connections</sys:String>
+    <sys:String x:Key="WorkersLabel">Concurrent requests (1–128)</sys:String>
+    <sys:String x:Key="ChecksumLabel">Expected SHA-256 (optional)</sys:String>
+    <sys:String x:Key="StartLabel">Start / Resume</sys:String>
+    <sys:String x:Key="PauseLabel">Pause</sys:String>
+    <sys:String x:Key="StageProbing">Checking source</sys:String>
+    <sys:String x:Key="StageDownloading">Downloading</sys:String>
+    <sys:String x:Key="StageVerifying">Verifying</sys:String>
+    <sys:String x:Key="StageCompleted">Completed</sys:String>
+    <sys:String x:Key="DestinationExistsStatus">That destination already exists. Choose a new filename to preserve it.</sys:String>
+    <sys:String x:Key="AccessStatus">The server refused access. The link may have expired or require authentication, which this version does not support.</sys:String>
+    <sys:String x:Key="ServerPressureStatus">The server is limiting requests. Wait before resuming, or reduce the request count.</sys:String>
+    <sys:String x:Key="ValidationStatus">The response, saved state or checksum could not be validated. Preserve the partial files and choose another destination if the resource changed.</sys:String>
+    <sys:String x:Key="ReadyStatus">Ready. Select your connections or explicitly choose the system route.</sys:String>
+    <sys:String x:Key="PreparingStatus">Preparing download…</sys:String>
+    <sys:String x:Key="PausedStatus">Stopped. Validated range checkpoints are kept; sequential downloads restart.</sys:String>
+    <sys:String x:Key="FailureStatus">Download stopped. Check the URL, selected connections, destination access and available disk space. Validated checkpoints are kept.</sys:String>
+    <sys:String x:Key="SelectionError">Select at least one connection, or enable the system route.</sys:String>
+    <sys:String x:Key="InputError">Enter a valid HTTP(S) URL, destination and request count from 1 to 128.</sys:String>
+    <sys:String x:Key="DiscoveryError">Could not read network connections. Refresh and try again.</sys:String>
+    <sys:String x:Key="ProgressFormat">{0} · {1:N0} / {2} bytes</sys:String>
+    <sys:String x:Key="UnknownTotal">unknown</sys:String>
+    <sys:String x:Key="ValidationNote">Hardware routing acceptance is pending. Existing destination files are never overwritten. Redirects, authenticated sites and browser capture are not supported in this version.</sys:String>
+</ResourceDictionary>

@@ -35,7 +35,7 @@ public static class RangeTransfer
         request.Headers.Range = new RangeHeaderValue(from, to);
         request.Headers.IfRange = new RangeConditionHeaderValue(tag);
         request.Headers.AcceptEncoding.ParseAdd("identity");
-        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        using var response = await HttpTransferPolicy.SendAsync(client, request, cancellationToken);
         ValidateResponse(response, range, resourceLength, tag);
         await using var body = await response.Content.ReadAsStreamAsync(cancellationToken);
         var buffer = ArrayPool<byte>.Shared.Rent(65536);
@@ -44,14 +44,14 @@ public static class RangeTransfer
             long written = 0;
             while (written < range.Length)
             {
-                var count = await body.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, range.Length - written)), cancellationToken);
+                var count = await HttpTransferPolicy.ReadAsync(body, buffer.AsMemory(0, (int)Math.Min(buffer.Length, range.Length - written)), cancellationToken);
                 if (count == 0)
                     throw new EndOfStreamException("The range body ended before the expected boundary.");
                 await RandomAccess.WriteAsync(destination, buffer.AsMemory(0, count), range.Start + written, cancellationToken);
                 written += count;
             }
             // Chunked/unknown-length responses may contain extra bytes beyond the claimed range.
-            if (await body.ReadAsync(buffer.AsMemory(0, 1), cancellationToken) != 0)
+            if (await HttpTransferPolicy.ReadAsync(body, buffer.AsMemory(0, 1), cancellationToken) != 0)
                 throw new InvalidDataException("The range body exceeded the expected boundary.");
             return written;
         }
@@ -60,6 +60,7 @@ public static class RangeTransfer
 
     private static void ValidateResponse(HttpResponseMessage response, ByteRange range, long resourceLength, EntityTagHeaderValue tag)
     {
+        HttpTransferPolicy.RequireSuccess(response);
         if (response.StatusCode != HttpStatusCode.PartialContent)
             throw new InvalidDataException("Expected a partial response; no payload was accepted.");
         var contentRange = response.Content.Headers.ContentRange;

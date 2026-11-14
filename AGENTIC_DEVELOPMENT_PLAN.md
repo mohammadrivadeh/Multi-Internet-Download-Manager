@@ -8,7 +8,7 @@
 - Initial architecture: x64. ARM64 and x86 are not baseline commitments.
 - UI: WPF, English, modern Fluent-inspired appearance.
 - Repository layout: production projects inside `application/`; no `src/` directory.
-- Current deliverable: implementation authorized on 2026-11-14; Phase 0 foundation and Phase 1 networking harness in progress; Windows hardware acceptance pending. See docs/STATUS.md for implemented behavior and test evidence.
+- Current deliverable: implementation authorized on 2026-11-14; initial functional engine, SQLite recovery and WPF shell implemented; later roadmap features and Windows acceptance remain outstanding. See docs/STATUS.md for implemented behavior and test evidence.
 - Product name: not selected. `DownloadManager` is a working technical name.
 
 This document is self-contained. An implementation agent must not require the original conversation to understand the requirements. It records the approved scope, technical rules, delivery sequence, acceptance criteria, and unresolved implementation details.
@@ -605,6 +605,8 @@ Linux-based tooling can test platform-neutral logic and HTTP behavior. It cannot
 
 ## 17. Phased implementation plan
 
+Implementation sequencing update (2026-11-14): the user explicitly requested continued development without waiting for their final hardware tests. Continue independent work across the phases below; track unexecuted acceptance in `docs/testing/PENDING-ACCEPTANCE.md`. The original exit criteria remain acceptance requirements, not evidence that tests have passed or a reason to stop all development. See `docs/STATUS.md` for actual scope.
+
 ### Phase 0 - Design baseline
 
 Deliverables: this specification, initial architecture decisions, model contracts, UI wireframes, compatibility matrix, and feature checklist.
@@ -716,13 +718,13 @@ Complete the concrete reviewable work before requesting approval for an action t
 The list is intentionally unchecked; this document does not claim application work has been completed.
 
 - [ ] Confirm minimum Windows builds and SDK/runtime compatibility.
-- [ ] Create the approved solution layout under `application/` after implementation is authorized.
+- [x] Create the approved solution layout under `application/` after implementation is authorized.
 - [x] Record interface-routing and DNS design decisions (ADR 0002; per-path DNS remains open).
 - [ ] Prove independent egress on real Windows hardware.
 - [ ] Define interval and lease invariants in executable tests.
-- [ ] Build the controllable HTTP test server.
-- [ ] Implement validated single-path range downloading.
-- [ ] Add bounded direct-offset writing and conservative checkpoints.
+- [x] Build the initial controllable HTTP test server (fixture/range, redirect and stall endpoints; more failure modes pending).
+- [x] Implement validated single-path range downloading (automated full-file and header/body tests).
+- [x] Add bounded direct-offset writing and conservative checkpoints (SQLite/hash resume; power-loss acceptance pending).
 - [ ] Add multi-path scheduling and more-than-eight request support.
 - [ ] Add adaptive range sizing, active-tail redistribution and endgame policy.
 - [ ] Validate retries, reconnects, quotas and server pressure handling.

@@ -1,39 +1,58 @@
 # Development status
 
-Date: 2026-11-14. Baseline fetched from origin/main: `30d5fb81f8159ebf63ad74b07abbab62eeedddac` (already current).
+Updated 2026-11-14. The user authorized merging to main and continuing without waiting for their Windows test results. All outstanding acceptance is recorded in [PENDING-ACCEPTANCE.md](testing/PENDING-ACCEPTANCE.md); it does not block independent implementation.
 
-## Scope and progress
+## Implemented
 
-- Phase 0: started; architecture boundary document, ADR 0001, compatibility matrix and executable byte-range contract added. Existing specification supplies the initial UI wireframe and feature roadmap. Remaining domain contracts will be defined with their consumers.
-- Phase 1: initial Windows networking harness implemented (discovery, explicit family/source/interface binding, fresh isolated HTTP/1.1 pool, network-change cancellation, bounded hash sample), CLI, controlled test server, ADR 0002 and Windows results template added. Real Windows evidence remains pending; user will execute final hardware tests. Production long-lived pool/generation management is not implemented.
-- Phase 2: independent single-range HTTP/file-write primitive started under the user’s continuation instruction; not integrated with Windows transport. The full downloader, probing, fallback and resume remain pending.
-- Phases 3–7: not implemented. Persistence, scheduler, WPF, browser integration and advanced modules remain pending.
+- Three production projects: Core, Infrastructure and App.Wpf; pinned .NET 10 SDK, nullable checks, warnings as errors and central NuGet versions.
+- Immutable 64-bit intervals, a lazy serialized range allocator, bounded 1–128 workers and per-worker adaptive range sizing.
+- Interface discovery, explicit Windows source/interface binding, isolated pools, stale snapshot checks and network-change cancellation. System route requires explicit opt-in.
+- HTTP/1.1 real one-byte probing, cross-path representation validation, exact range and strong ETag validation, offset writes and sequential fallback.
+- Header/inactivity timeouts, bounded transient retries and Retry-After handling (long server delays stop rather than retry early).
+- SQLite schema version 1, file-flush-before-metadata transactions, checkpoint hashes, conservative resume, optional authoritative SHA-256 and no-overwrite finalization.
+- Initial WPF form with URL/destination, interface selection, worker count, SHA-256, progress, start/resume/pause and awaited cancellation on close.
+- Console probe/download harnesses, synthetic fixture server and Linux/Windows GitHub Actions build/test workflow.
+- ADRs 0001–0005, architecture notes, acceptance procedures and backlog.
 
-## Validation
+## Validation completed on the current machine
 
-Executed `dotnet test DownloadManager.sln --configuration Release` using SDK 10.0.404 on Linux x64: **12 passed, 0 failed, 0 skipped**. The Release compilation completed with warnings treated as errors. The runner emitted an informational VSTEST_ARTIFACTS_DIRECTORY fallback message; test discovery and execution completed successfully. Tests cover invalid intervals, single-byte HTTP conversion, offsets above 4 GiB, long.MaxValue endpoint arithmetic, invalid split boundaries, overlap/adjacency, and 2,000 deterministic random splits preserving coverage without overlap.
+- Release solution build, all eight projects: **0 warnings, 0 errors**.
+- Automated tests: **60 passed, 0 failed, 0 skipped** (14 Core, 46 integration).
+- Tested: interval boundaries, randomized exact coverage, stale snapshots, HTTP request/response behavior, invalid identity/header rejection before writes, short/oversized bodies, cancellation, sparse offset above 4 GiB, complete downloads, SQLite resume, damaged checkpoint data repair, changed-resource rejection, differing representations across paths, sequential fallback, checksum failure, destination collision including a race at finalization, and long Retry-After refusal without retrying early.
+- Tests configured at 16, 32 and 64 workers verified more than eight overlapping simulated requests and correct full output. These are correctness tests, not speed benchmarks or real interface aggregation.
+- Real local end-to-end smoke: ASP.NET fixture server → HTTP probe → range transfer → SQLite checkpoints → final file; compared with authoritative fixture SHA-256 and verified sidecar cleanup. A 16-worker configuration was used; the small fixture needs only one default-sized range, so this smoke does not establish 16 concurrent network requests.
+- Windows x64 WPF portable build cross-published successfully. Requires .NET 10 Desktop Runtime x64. Not executed on Windows.
+- NuGet auditing remained enabled. Initial SQLite 10.0.0 graph was rejected due to a vulnerable native transitive dependency; serviced Microsoft.Data.Sqlite 10.0.15 restored and built successfully.
+- CI configuration is saved; no remote workflow result is claimed without checking GitHub.
 
-No Windows interface-routing, reconnect, WPF or installer tests have run. No multi-internet throughput claim is made.
+## Phase and feature matrix
 
-## Networking slice validation (2026-11-14)
+| Plan area | Implementation status | Remaining work / evidence |
+| --- | --- | --- |
+| Phase 0: design baseline | Initial architecture/contracts/ADRs and original wireframe represented | Continue decisions as components evolve |
+| Phase 1: Windows networking proof | Harness and application transport implemented | Real independent-path proof pending user tests |
+| Phase 2: single-path engine | Initial full-file engine, validated ranges and sequential fallback implemented | Redirect policy, richer failure diagnostics, auth/context, more failure-server cases |
+| Phase 3: adaptive multi-path | Shared pending pool, adaptive range sizing and selected transports implemented | Active-tail splitting/fenced leases, adaptive concurrency, fairness across jobs, real benchmarks |
+| Phase 4: durable recovery | SQLite checkpoint ordering, hashed resume and finalization implemented | Process-kill/power-loss and disk-failure injection, migrations beyond schema 1, large checkpoint optimization |
+| Phase 5: WPF base product | First functional desktop flow implemented | Queue/history/categories, speed/quota policy, scheduler, tray, notifications, settings, localization infrastructure expansion, accessibility/DPI acceptance, installer |
+| Phase 6: browser integration | Not implemented | Extensions, native messaging, minimal protected request context and expired-link refresh |
+| Phase 7: advanced modules | Not implemented | Supported-site non-DRM media, HLS/DASH, FTP/FTPS, Site Grabber, sync and antivirus integration |
 
-- Full solution Release build: 0 warnings, 0 errors (all six projects).
-- Core suite: 12 passed, 0 failed, 0 skipped.
-- Networking integration suite: 12 passed, 0 failed, 0 skipped. Tests include destination restrictions, interface option encoding, stale/missing snapshots, mutable address isolation, real loopback 200/206/302 exchanges, bounded hashing, pending-connect cancellation and truncated-body rejection. These tests inject a loopback connector and cannot validate Windows binding.
-- Live TestServer smoke: readiness, 206, Content-Range, 65536-byte fixture sample/hash and redirect response verified. The temporary server was stopped afterward.
-- CLI smoke: discovery JSON parsed (4 candidate addresses), bad command exit 2, Linux binding rejected with exit 1, and error output omitted the URL query.
-- Framework-dependent Windows x64 packages produced for NetworkProbe and TestServer. Not executed on Windows. Probe needs .NET 10 x64 runtime; server needs ASP.NET Core 10 x64 runtime (or .NET 10 SDK for both).
-- Packaged archive is a local test artifact, not a published release. No system routing, firewall or credentials were modified.
+No claim is made that all phases or IDM feature parity are complete. No routes, firewall settings, public release or external deployment were changed.
 
-## Next gate
+## Operational limitations
 
-Run the Windows proof procedure and return the results template with selected-interface packet/server evidence. Validate IPv4/IPv6, overlapping tethering subnets, disconnect/reconnect, cancellation and TLS. Resolve any routing defects before accepting Phase 1 and integrating adaptive multi-path behavior. The downloader and WPF UI are still unimplemented.
+- Resume requires the original exact URL and a stable strong ETag/length; changed or expired links are not refreshed automatically. Metadata stores only a URL hash, not the URL or credentials.
+- Sequential fallback restarts from zero after cancellation and deletes only its own partial file. Unknown size stays indeterminate.
+- Redirects, cookies/authentication, proxies and encoded representations are rejected/unsupported in this first version. Certificate validation stays enabled.
+- Each worker retains exclusive ownership until it finishes; failed extents are retried whole. Active-tail reassignment and speculative duplicate requests are not implemented.
+- Metadata grows with checkpoint count. The current implementation loads checkpoint rows to verify them; stress tuning and coalesced/streaming recovery remain open.
+- A crash after rename but before database cleanup can leave an orphan sidecar. Existing finalized destinations are never replaced automatically.
+- Closing the window cancels and awaits the current transfer; tray/background continuation is not implemented.
 
-## Continued development after first push
+## Delivery history
 
-- First implementation committed and pushed as `c475123` to `origin/work`.
-- Added `RangeTransfer.WriteAsync`: known-length, strong-ETag single-range HTTP transfer with response validation before writing, pooled streaming and explicit file offsets.
-- Added ADR 0003 describing supplied transport/ownership requirements, partial-write behavior and the absence of durability/completion guarantees.
-- Final Release build: 0 warnings, 0 errors. Tests: **45 passed, 0 failed, 0 skipped** (12 Core, 33 integration).
-- New tests include valid offset writes, header/identity rejection before writes, short/oversized body rejection, stalled-body cancellation and a sparse-file write above 4 GiB. No Windows or throughput acceptance is implied.
-- This code does not yet implement a full-file downloader, retries, sequential fallback, resource probing, crash recovery or multi-path scheduling. Header/connect/read timeout policy belongs to the supplied transport/orchestrator and is not yet integrated here.
+- `c475123`: .NET foundation and Windows probe, initially pushed to work.
+- `5cb2694`: validated range transfer, initially pushed to work.
+- Both commits fast-forward merged and pushed to main at the user's request.
+- The functional engine/recovery/desktop increment is delivered with the next main commit.
