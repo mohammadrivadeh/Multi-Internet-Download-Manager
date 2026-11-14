@@ -5,7 +5,7 @@ The approved specification remains the requirements source. This document maps i
 | Boundary | Responsibility | Current state |
 | --- | --- | --- |
 | Core | Pure domain contracts, range ownership, scheduler policy | ByteRange implemented; other contracts planned |
-| Infrastructure | HTTP, interface discovery/binding, disk, SQLite | Discovery and experimental Windows-bound probe implemented; disk/SQLite planned |
+| Infrastructure | HTTP, interface discovery/binding, disk, SQLite | Discovery, experimental Windows-bound probe and validated single-range file writes implemented; durable storage/SQLite planned |
 | App.Wpf | Composition, MVVM, resource-backed English UI | Planned |
 | Tests | Core invariants, controlled HTTP behavior, Windows acceptance | Interval and loopback HTTP tests, controlled fixture server and probe CLI implemented; Windows acceptance pending |
 

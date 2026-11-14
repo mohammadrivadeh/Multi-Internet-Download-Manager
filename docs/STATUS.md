@@ -6,7 +6,8 @@ Date: 2026-11-14. Baseline fetched from origin/main: `30d5fb81f8159ebf63ad74b07a
 
 - Phase 0: started; architecture boundary document, ADR 0001, compatibility matrix and executable byte-range contract added. Existing specification supplies the initial UI wireframe and feature roadmap. Remaining domain contracts will be defined with their consumers.
 - Phase 1: initial Windows networking harness implemented (discovery, explicit family/source/interface binding, fresh isolated HTTP/1.1 pool, network-change cancellation, bounded hash sample), CLI, controlled test server, ADR 0002 and Windows results template added. Real Windows evidence remains pending; user will execute final hardware tests. Production long-lived pool/generation management is not implemented.
-- Phases 2–7: not implemented. Downloader, persistence, scheduler, WPF, browser integration and advanced modules remain pending.
+- Phase 2: independent single-range HTTP/file-write primitive started under the user’s continuation instruction; not integrated with Windows transport. The full downloader, probing, fallback and resume remain pending.
+- Phases 3–7: not implemented. Persistence, scheduler, WPF, browser integration and advanced modules remain pending.
 
 ## Validation
 
@@ -27,3 +28,12 @@ No Windows interface-routing, reconnect, WPF or installer tests have run. No mul
 ## Next gate
 
 Run the Windows proof procedure and return the results template with selected-interface packet/server evidence. Validate IPv4/IPv6, overlapping tethering subnets, disconnect/reconnect, cancellation and TLS. Resolve any routing defects before accepting Phase 1 and integrating adaptive multi-path behavior. The downloader and WPF UI are still unimplemented.
+
+## Continued development after first push
+
+- First implementation committed and pushed as `c475123` to `origin/work`.
+- Added `RangeTransfer.WriteAsync`: known-length, strong-ETag single-range HTTP transfer with response validation before writing, pooled streaming and explicit file offsets.
+- Added ADR 0003 describing supplied transport/ownership requirements, partial-write behavior and the absence of durability/completion guarantees.
+- Final Release build: 0 warnings, 0 errors. Tests: **45 passed, 0 failed, 0 skipped** (12 Core, 33 integration).
+- New tests include valid offset writes, header/identity rejection before writes, short/oversized body rejection, stalled-body cancellation and a sparse-file write above 4 GiB. No Windows or throughput acceptance is implied.
+- This code does not yet implement a full-file downloader, retries, sequential fallback, resource probing, crash recovery or multi-path scheduling. Header/connect/read timeout policy belongs to the supplied transport/orchestrator and is not yet integrated here.

@@ -4,7 +4,7 @@ Windows 10/11 x64 download manager under development. The approved requirements 
 
 ## Current implementation
 
-Phase 0 foundation and an initial Phase 1 Windows network probe: interface discovery, explicit source/interface selection, bounded HTTP sampling and a controlled fixture server. There is no downloader or WPF application yet. Windows hardware acceptance is pending. See the Windows proof procedure below for commands and a results template.
+Phase 0 foundation and an initial Phase 1 Windows network probe: interface discovery, explicit source/interface selection, bounded HTTP sampling and a controlled fixture server. An independent single-range transfer primitive now validates HTTP responses and writes directly at the requested file offset (ADR 0003). There is no complete downloader or WPF application yet. Windows hardware acceptance is pending. See the Windows proof procedure below for commands and a results template.
 
 ## Build and test
 
