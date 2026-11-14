@@ -4,9 +4,9 @@ The approved specification remains the requirements source. This document maps i
 
 | Boundary | Responsibility | Current state |
 | --- | --- | --- |
-| Core | Pure domain contracts, range ownership, scheduler policy | ByteRange, range allocator, download options/progress implemented; fenced active leases planned |
-| Infrastructure | HTTP, interface discovery/binding, disk, SQLite | Discovery, selected-path pools, HTTP engine, file writes and SQLite checkpoints implemented; Windows acceptance pending |
-| App.Wpf | Composition, MVVM, resource-backed English UI | Initial functional download form implemented; Windows desktop acceptance pending |
+| Core | Pure domain contracts, range ownership, scheduler policy | ByteRange, range allocator, download options/progress and queue state/scheduling implemented; fenced active leases planned |
+| Infrastructure | HTTP, interface discovery/binding, disk, SQLite | Discovery, selected-path pools, HTTP engine, file writes, SQLite checkpoints, protected queue store and coordinator implemented; Windows acceptance pending |
+| App.Wpf | Composition, MVVM, resource-backed English UI | Functional form, queue/history, search/filter and one-time start scheduling implemented; Windows desktop acceptance pending |
 | Tests | Core invariants, controlled HTTP behavior, Windows acceptance | Core, HTTP and SQLite recovery tests, fixture server and CLI harnesses implemented; Windows acceptance pending |
 
 ## Contract rules

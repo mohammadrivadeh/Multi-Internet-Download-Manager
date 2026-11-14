@@ -10,9 +10,11 @@ Independent Windows 10/11 x64 download manager, under active development. The [a
 - Validated range responses and offset writes, bounded retry/backoff, header/read deadlines and 429/503 handling.
 - Pause/cancel, SQLite checkpoints, hash-verified resume and final size/optional authoritative SHA-256 checks.
 - Safe sequential fallback when ranges/strong validators are unavailable (restart rather than resume).
-- WPF URL/destination form, connection selection, concurrency setting, progress, start/resume and pause.
+- WPF URL/destination form, connection selection, concurrency setting and live progress.
+- Persistent queue/history protected with Windows DPAPI; per-job priority, one-time scheduled start, filename search and state filters.
+- Sequential job processing, explicit requeue of paused/failed jobs and cancellation without deleting data files.
 
-Windows routing, WPF execution and real-device performance still require acceptance. Development continues without waiting for those results; see [the acceptance register](docs/testing/PENDING-ACCEPTANCE.md). Queues/history, tray, schedules, browser capture, media and advanced protocols remain future work in [status](docs/STATUS.md).
+Windows routing, WPF execution and real-device performance still require acceptance. Development continues without waiting for those results; see [the acceptance register](docs/testing/PENDING-ACCEPTANCE.md). Tray, recurring schedules, categories, browser capture, media and advanced protocols remain future work in [status](docs/STATUS.md).
 
 ## Build and test
 
@@ -32,7 +34,13 @@ Linux can compile the WPF application using Windows targeting packs and run engi
 dotnet run --project application/App.Wpf -c Release
 ```
 
-Enter a direct HTTP(S) URL and a new destination filename. Select desired addresses under Connections, set workers to at least the number of selected addresses, then Start / Resume. System-route mode uses OS routing instead of the selected interfaces. No proxy, automatic redirect, auth/cookie capture or TLS verification bypass is enabled. Existing destinations are never overwritten. Use the original URL and destination to resume a segmented job. If the representation changes, preserve the partial file and choose another destination. A stopped sequential job restarts from zero.
+Enter a direct HTTP(S) URL and a new destination filename. Select desired addresses under Connections, set workers to at least the number of selected addresses, then Add to queue. Repeat for additional files and click Start queue. System-route mode uses OS routing instead of the selected interfaces. No proxy, automatic redirect, auth/cookie capture or TLS verification bypass is enabled. Existing destinations are never overwritten. Select a Paused or Failed entry and click Requeue paused / failed, then Start queue, to resume. Each entry retains its own source, destination and connection settings. If the representation changes, preserve the partial file and choose another destination. A stopped sequential job restarts from zero.
+
+Queue records are saved under `%LOCALAPPDATA%/MultiInternetDownloadManager/queue.sqlite`, protected for the current Windows user. A second app instance cannot open the same queue. Source URLs and signed query strings are not stored in plaintext. Keep the original Windows user profile to retain decryption access. Failed decryption preserves the store and disables queue actions.
+
+Optional priority ranges from -10 to 10. A scheduled start must include a date and offset, for example `2026-11-15T09:00:00+03:30`. Start queue enables ready jobs and checks scheduled work every five seconds **while the app is open**. Stop queue disables scheduled starts and pauses the active transfer. Launching the app does not automatically resume work. Recurring windows, OS wake/start tasks and simultaneous file jobs are not yet implemented.
+
+Search and state filters apply to the queue/history table. Cancel pending entry does not delete partial files; clearing Completed/Cancelled history does not delete downloads. A Running job must first stop and finish cancellation before its entry can be cancelled. To correct an unavailable saved network address, cancel that entry and add the same original URL/destination with the new explicit selection; do not delete valid checkpoints. Queue capacity is 1000 entries including history.
 
 To distribute a framework-dependent test build:
 

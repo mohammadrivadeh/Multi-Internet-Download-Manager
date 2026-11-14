@@ -8,6 +8,9 @@ The user explicitly requested on 2026-11-14 that implementation continue without
 | Independent Wi-Fi + USB phones + Ethernet | Pending user execution | Selected and disallowed adapter packet captures plus controlled-server logs |
 | IPv4/IPv6 and overlapping tether subnets | Pending user execution | Correct selected TCP interface, no unsafe fallback |
 | Network change and reconnect | Pending user execution | Cancellation, new discovery/session and successful resume |
+| Protected queue/profile and tamper regression | Pending Windows execution | Native DPAPI test in Windows CI, cross-profile refusal and preserved unreadable store |
+| Queue UI, close/save races and second instance | Pending Windows desktop execution | Add/requeue/cancel/history filtering, exclusive lease and awaited shutdown |
+| Scheduled start, stop and app restart | Pending desktop execution | Explicit offsets, no start while stopped/closed and Paused crash recovery |
 | WPF keyboard, screen reader, DPI and high contrast | Pending user execution | Actual desktop accessibility and responsiveness |
 | Close window during transfer | Pending user execution | All writers finish before process exit; successful next-run resume |
 | Process kill / power failure during flush or SQLite commit | Pending fault injection | Conservative recovery; no false completion |

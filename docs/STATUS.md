@@ -10,15 +10,17 @@ Updated 2026-11-14. The user authorized merging to main and continuing without w
 - HTTP/1.1 real one-byte probing, cross-path representation validation, exact range and strong ETag validation, offset writes and sequential fallback.
 - Header/inactivity timeouts, bounded transient retries and Retry-After handling (long server delays stop rather than retry early).
 - SQLite schema version 1, file-flush-before-metadata transactions, checkpoint hashes, conservative resume, optional authoritative SHA-256 and no-overwrite finalization.
-- Initial WPF form with URL/destination, interface selection, worker count, SHA-256, progress, start/resume/pause and awaited cancellation on close.
+- WPF form and persistent queue/history: explicit per-job URL/destination/path/worker/checksum settings, priorities, scheduled starts, filename search and state filters.
+- Windows DPAPI-protected queue payloads, a single-instance database lease, explicit requeue/cancel and record-only history clearing. Interrupted Running entries recover Paused.
+- One active file at a time, aging-based ready selection, five-second due-job checks after Start queue, and awaited download/save/initialization shutdown.
 - Console probe/download harnesses, synthetic fixture server and Linux/Windows GitHub Actions build/test workflow.
-- ADRs 0001–0005, architecture notes, acceptance procedures and backlog.
+- ADRs 0001–0006, architecture notes, acceptance procedures and backlog.
 
 ## Validation completed on the current machine
 
 - Release solution build, all eight projects: **0 warnings, 0 errors**.
-- Automated tests: **60 passed, 0 failed, 0 skipped** (14 Core, 46 integration).
-- Tested: interval boundaries, randomized exact coverage, stale snapshots, HTTP request/response behavior, invalid identity/header rejection before writes, short/oversized bodies, cancellation, sparse offset above 4 GiB, complete downloads, SQLite resume, damaged checkpoint data repair, changed-resource rejection, differing representations across paths, sequential fallback, checksum failure, destination collision including a race at finalization, and long Retry-After refusal without retrying early.
+- Automated tests: **77 passed, 0 failed, 1 skipped** (23 Core passed; 54 integration passed, 1 Windows-only DPAPI skipped).
+- Tested: interval boundaries, randomized exact coverage, stale snapshots, HTTP request/response behavior, invalid identity/header rejection before writes, short/oversized bodies, cancellation, sparse offset above 4 GiB, complete downloads, SQLite resume, damaged checkpoint data repair, changed-resource rejection, differing representations across paths, sequential fallback, checksum failure, destination collision including a race at finalization, and long Retry-After refusal without retrying early. Queue tests additionally cover priority aging, explicit-offset schedules, state transitions, encrypted persistence/tamper rejection, exclusive ownership, duplicate destinations/runners, cancellation ordering, failure progression, restart recovery and protected history after a real scheduled HTTP transfer.
 - Tests configured at 16, 32 and 64 workers verified more than eight overlapping simulated requests and correct full output. These are correctness tests, not speed benchmarks or real interface aggregation.
 - Real local end-to-end smoke: ASP.NET fixture server → HTTP probe → range transfer → SQLite checkpoints → final file; compared with authoritative fixture SHA-256 and verified sidecar cleanup. A 16-worker configuration was used; the small fixture needs only one default-sized range, so this smoke does not establish 16 concurrent network requests.
 - Windows x64 WPF portable build cross-published successfully. Requires .NET 10 Desktop Runtime x64. Not executed on Windows.
@@ -34,7 +36,7 @@ Updated 2026-11-14. The user authorized merging to main and continuing without w
 | Phase 2: single-path engine | Initial full-file engine, validated ranges and sequential fallback implemented | Redirect policy, richer failure diagnostics, auth/context, more failure-server cases |
 | Phase 3: adaptive multi-path | Shared pending pool, adaptive range sizing and selected transports implemented | Active-tail splitting/fenced leases, adaptive concurrency, fairness across jobs, real benchmarks |
 | Phase 4: durable recovery | SQLite checkpoint ordering, hashed resume and finalization implemented | Process-kill/power-loss and disk-failure injection, migrations beyond schema 1, large checkpoint optimization |
-| Phase 5: WPF base product | First functional desktop flow implemented | Queue/history/categories, speed/quota policy, scheduler, tray, notifications, settings, localization infrastructure expansion, accessibility/DPI acceptance, installer |
+| Phase 5: WPF base product | Functional desktop, protected queue/history, priority, one-time start scheduling, search/filter implemented | Categories, speed/quota policy, recurring schedule windows, concurrent-job fairness, tray, notifications, settings UI, accessibility/DPI acceptance, installer |
 | Phase 6: browser integration | Not implemented | Extensions, native messaging, minimal protected request context and expired-link refresh |
 | Phase 7: advanced modules | Not implemented | Supported-site non-DRM media, HLS/DASH, FTP/FTPS, Site Grabber, sync and antivirus integration |
 
@@ -48,11 +50,15 @@ No claim is made that all phases or IDM feature parity are complete. No routes, 
 - Each worker retains exclusive ownership until it finishes; failed extents are retried whole. Active-tail reassignment and speculative duplicate requests are not implemented.
 - Metadata grows with checkpoint count. The current implementation loads checkpoint rows to verify them; stress tuning and coalesced/streaming recovery remain open.
 - A crash after rename but before database cleanup can leave an orphan sidecar. Existing finalized destinations are never replaced automatically.
-- Closing the window cancels and awaits the current transfer; tray/background continuation is not implemented.
+- Closing the window cancels/awaits the queue, pending saves and initialization before releasing the store lease. Tray/background continuation is not implemented.
+- Scheduling requires the app running and Start queue enabled. It is checked at five-second intervals; no OS wake/start or recurring windows are created. Only one file runs at once, with concurrent requests inside that file.
+- DPAPI persistence is tied to the Windows user profile. Cross-account imports, profile-key recovery and queue encryption on Linux are not implemented. The actual Windows DPAPI regression test is skipped on Linux and configured to execute in Windows CI; no remote CI success is claimed.
+- A crash between finalized-file rename and queue-state commit may leave a Paused history row for an existing destination. That file remains protected from overwrite; reconcile the row manually.
 
 ## Delivery history
 
 - `c475123`: .NET foundation and Windows probe, initially pushed to work.
 - `5cb2694`: validated range transfer, initially pushed to work.
 - Both commits fast-forward merged and pushed to main at the user's request.
-- The functional engine/recovery/desktop increment is delivered with the next main commit.
+- `2463ff5`: functional engine, SQLite recovery and first desktop app, pushed to main.
+- The protected queue/history/scheduling increment follows on main; all nonlocal acceptance remains recorded without blocking development.
