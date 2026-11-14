@@ -38,7 +38,7 @@ public partial class MainViewModel
                 Source = source, Destination = Destination, UseSystemRoute = UseSystemRoute,
                 Paths = Paths.Where(p => p.Selected).Select(p => new QueuedPath(p.Path.AdapterId, p.Path.SourceAddress.ToString())).ToArray(),
                 Options = new DownloadOptions { Workers = workers, BytesPerSecondLimit = speedKiB == 0 ? null : speedKiB * 1024, ExpectedSha256 = string.IsNullOrWhiteSpace(ExpectedSha256) ? null : ExpectedSha256.Trim() },
-                Priority = priorityValue, NotBefore = QueueScheduling.ParseStart(ScheduledStart)
+                Category = DownloadCategory.Normalize(Category), Priority = priorityValue, NotBefore = QueueScheduling.ParseStart(ScheduledStart)
             };
             job.Validate();
             await Task.Run(() => queue.EnqueueAsync(job));

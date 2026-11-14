@@ -12,11 +12,11 @@ Independent Windows 10/11 x64 download manager, under active development. The [a
 - Pause/cancel, SQLite checkpoints, hash-verified resume and final size/optional authoritative SHA-256 checks.
 - Safe sequential fallback when ranges/strong validators are unavailable (restart rather than resume).
 - WPF URL/destination form, connection selection, concurrency setting and live progress.
-- Persistent queue/history protected with Windows DPAPI; per-job priority, one-time scheduled start, filename search and state filters.
+- Persistent queue/history protected with Windows DPAPI; per-job priority, one-time scheduled start, filename search, categories and state/category filters.
 - Sequential job processing, explicit requeue of paused/failed jobs and cancellation without deleting data files.
 - A per-download KiB/s speed cap shared across all its workers, with zero meaning unlimited.
 
-Windows routing, WPF execution and real-device performance still require acceptance. Development continues without waiting for those results; see [the acceptance register](docs/testing/PENDING-ACCEPTANCE.md). Tray, recurring schedules, categories, media and advanced protocols remain future work in [status](docs/STATUS.md).
+Windows routing, WPF execution and real-device performance still require acceptance. Development continues without waiting for those results; see [the acceptance register](docs/testing/PENDING-ACCEPTANCE.md). Tray, recurring schedules, media and advanced protocols remain future work in [status](docs/STATUS.md).
 
 ## Build and test
 
@@ -85,3 +85,9 @@ The engine preserves range headers through a bounded redirect chain and validate
 Browser extensions/integration and Site Grabber are **excluded by user request**. They are not future deliverables. The remaining scope and incomplete acceptance are listed in docs/STATUS.md.
 
 The desktop uses explicit application composition, focused shell command modules, separate section views and injected desktop/queue-session adapters. See [desktop architecture](docs/architecture/desktop-structure.md) for the folder map and ownership rules.
+
+## Categories and desktop defaults
+
+Enter a category in the form when adding a job. Use the category filter to narrow history, or Apply category to selected to reclassify a non-running entry. Names contain 1–64 printable characters; existing jobs without a category appear under General. Reclassification never moves or deletes files. Automatic folder rules are not implemented.
+
+Save form defaults persists workers, speed cap, priority and category in DPAPI-protected `preferences.bin` beside `queue.sqlite`. It does not save the source URL, destination, checksum, connections, schedule or queue autorun. Saved queue entries keep their own captured settings. Unreadable settings are preserved and built-in values are used; to reset, close the app and back up/rename the unreadable preferences file before restarting. Defaults cannot be overwritten through the UI after a load failure.

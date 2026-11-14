@@ -1,5 +1,6 @@
 <UserControl x:Class="DownloadManager.App.Views.Sections.QueueView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>            <TextBlock Text="{DynamicResource QueueLabel}" FontSize="18" FontWeight="SemiBold" Margin="0,20,0,8"/>
             <DockPanel Grid.Row="1">
+                <ComboBox ItemsSource="{Binding Categories}" DisplayMemberPath="Name" SelectedValuePath="Key" SelectedValue="{Binding CategoryFilter}" DockPanel.Dock="Right" Width="150" Margin="10,6,0,12" AutomationProperties.Name="{DynamicResource CategoryLabel}"/>
                 <ComboBox SelectedValue="{Binding StateFilter}" SelectedValuePath="Tag" DockPanel.Dock="Right" Width="150" Margin="10,6,0,12">
                     <ComboBoxItem Content="{DynamicResource FilterAll}" Tag="All"/>
                     <ComboBoxItem Content="{DynamicResource FilterActive}" Tag="Active"/>
@@ -11,6 +12,7 @@
             <DataGrid ItemsSource="{Binding JobsView}" SelectedItem="{Binding SelectedJob}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" MinHeight="180" Grid.Row="2" SelectionMode="Single" EnableRowVirtualization="True" ScrollViewer.CanContentScroll="True" AutomationProperties.Name="{DynamicResource QueueLabel}">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="{DynamicResource FileColumn}" Binding="{Binding Filename}" Width="*"/>
+                    <DataGridTextColumn Header="{DynamicResource CategoryLabel}" Binding="{Binding Category}" Width="110"/>
                     <DataGridTextColumn Header="{DynamicResource StateColumn}" Binding="{Binding State}" Width="100"/>
                     <DataGridTextColumn Header="{DynamicResource ProgressLabel}" Binding="{Binding Progress}" Width="140"/>
                     <DataGridTextColumn Header="{DynamicResource SpeedLimitColumn}" Binding="{Binding RateLimit}" Width="100"/>
@@ -20,6 +22,7 @@
                 </DataGrid.Columns>
             </DataGrid>
             <WrapPanel Grid.Row="3" IsEnabled="{Binding IsReady}">
+                <Button Content="{DynamicResource AssignCategoryLabel}" Command="{Binding AssignCategoryCommand}"/>
                 <Button Content="{DynamicResource ResumeSelectedLabel}" Command="{Binding ResumeSelectedCommand}"/>
                 <Button Content="{DynamicResource CancelSelectedLabel}" Command="{Binding CancelSelectedCommand}"/>
                 <Button Content="{DynamicResource ClearHistoryLabel}" Command="{Binding ClearHistoryCommand}"/>

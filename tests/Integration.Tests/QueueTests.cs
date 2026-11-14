@@ -21,13 +21,14 @@ public class QueueTests
         {
             using var protector = new TestProtector();
             var path = Path.Combine(directory, "queue.sqlite");
-            var job = Job() with { Options = new DownloadOptions { BytesPerSecondLimit = 12345 } };
+            var job = Job() with { Category = "Documents", Options = new DownloadOptions { BytesPerSecondLimit = 12345 } };
             using (var store = new QueueStore(path, protector))
             {
                 store.Save(job);
                 var loaded = Assert.Single(store.Load());
                 Assert.Equal(job.Source, loaded.Source);
                 Assert.Equal(job.Destination, loaded.Destination);
+                Assert.Equal("Documents", loaded.Category);
                 Assert.Equal(12345, loaded.Options.BytesPerSecondLimit);
                 Assert.Throws<IOException>(() => new QueueStore(path, protector));
             }
@@ -118,6 +119,7 @@ public class QueueTests
         await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await Assert.ThrowsAsync<InvalidOperationException>(() => queue.RunReadyAsync());
         await Assert.ThrowsAsync<InvalidOperationException>(() => queue.ChangeStateAsync(job.Id, QueueJobState.Cancelled));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => queue.SetCategoryAsync(job.Id, "Changed"));
         stop.Cancel(); await run;
         Assert.True(ended); Assert.Equal(QueueJobState.Paused, store.Jobs[job.Id].State);
     }
@@ -256,6 +258,56 @@ public class QueueTests
                 await stream.WriteAsync(payload.AsMemory((int)from, (int)(to - from + 1)), deadline.Token);
             }
         }
+    }
+
+    [Fact]
+    public async Task CategoriesSurvivePersistenceAndCanChangeWithoutChangingStateOrFiles()
+    {
+        var memory = new MemoryStore();
+        var queue = new QueueCoordinator(memory, new FakeExecutor((_, _, _) => Task.CompletedTask), new TestClock(Now));
+        await queue.InitializeAsync();
+        var job = await queue.EnqueueAsync(Job() with { Category = "  Documents  " });
+        Assert.Equal("Documents", job.Category);
+        await queue.SetCategoryAsync(job.Id, "Archives");
+        Assert.Equal(QueueJobState.Queued, memory.Jobs[job.Id].State);
+        await queue.RunReadyAsync();
+        await queue.SetCategoryAsync(job.Id, "History");
+        Assert.Equal(QueueJobState.Completed, memory.Jobs[job.Id].State);
+        Assert.Equal("History", memory.Jobs[job.Id].Category);
+        var restored = new QueueCoordinator(memory, new FakeExecutor((_, _, _) => Task.CompletedTask), new TestClock(Now));
+        await restored.InitializeAsync();
+        Assert.Equal("History", Assert.Single(await restored.SnapshotAsync()).Category);
+    }
+
+    [Fact]
+    public void ProtectedDefaultsRoundTripAndFailuresPreservePreviousFile()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            using var protector = new TestProtector();
+            var filename = Path.Combine(directory, "preferences.bin");
+            var store = new PreferencesStore(filename, protector);
+            Assert.Equal(4, store.Load().Workers);
+            store.Save(new DesktopPreferences { Workers = 16, SpeedLimitKiB = 128, Priority = 2, Category = " PrivateCategory " });
+            var saved = store.Load();
+            Assert.Equal(16, saved.Workers); Assert.Equal(128, saved.SpeedLimitKiB); Assert.Equal("PrivateCategory", saved.Category);
+            var original = File.ReadAllBytes(filename);
+            Assert.DoesNotContain("PrivateCategory", Encoding.UTF8.GetString(original));
+            Assert.Throws<InvalidOperationException>(() => new PreferencesStore(filename, new FailingProtector()).Save(new()));
+            Assert.Equal(original, File.ReadAllBytes(filename));
+            Assert.Single(Directory.GetFiles(directory));
+            var tampered = original.ToArray(); tampered[^1] ^= 1; File.WriteAllBytes(filename, tampered);
+            Assert.ThrowsAny<CryptographicException>(() => store.Load());
+            Assert.Equal(tampered, File.ReadAllBytes(filename));
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+    private sealed class FailingProtector : IQueuePayloadProtector
+    {
+        public byte[] Protect(byte[] data) => throw new InvalidOperationException("Simulated encryption failure");
+        public byte[] Unprotect(byte[] data) => throw new InvalidOperationException();
     }
 
     private sealed class MemoryStore : IQueueStore

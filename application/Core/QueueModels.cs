@@ -12,6 +12,7 @@ public sealed record QueueJob
     public DownloadOptions Options { get; init; } = new();
     public bool UseSystemRoute { get; init; }
     public IReadOnlyList<QueuedPath> Paths { get; init; } = [];
+    public string Category { get; init; } = DownloadCategory.Default;
     public int Priority { get; init; }
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? NotBefore { get; init; }
@@ -28,6 +29,7 @@ public sealed record QueueJob
         if (Source.AbsoluteUri.Length > 32768 || Destination.Length > 32768 || !Enum.IsDefined(State))
             throw new ArgumentException("Invalid queue payload size or state.");
         Options.Validate();
+        _ = DownloadCategory.Normalize(Category);
         if (Priority is < -10 or > 10) throw new ArgumentOutOfRangeException(nameof(Priority));
         if (!UseSystemRoute && (Paths.Count == 0 || Paths.Count > Options.Workers))
             throw new ArgumentException("Select allowed paths and allocate at least one worker per path.");

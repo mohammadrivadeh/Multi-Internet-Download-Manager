@@ -69,4 +69,12 @@
     <sys:String x:Key="SpeedLimitLabel">Download speed limit (KiB/s; 0 = unlimited)</sys:String>
     <sys:String x:Key="SpeedLimitColumn">Limit KiB/s</sys:String>
     <sys:String x:Key="UnlimitedLabel">Unlimited</sys:String>
+    <sys:String x:Key="CategoryLabel">Category</sys:String>
+    <sys:String x:Key="AllCategoriesLabel">All categories</sys:String>
+    <sys:String x:Key="AssignCategoryLabel">Apply category to selected</sys:String>
+    <sys:String x:Key="SaveDefaultsLabel">Save form defaults</sys:String>
+    <sys:String x:Key="PreferencesSavedStatus">Defaults saved: workers, speed cap, priority and category. Source, destination, connections and scheduled start are not saved as defaults.</sys:String>
+    <sys:String x:Key="PreferencesLoadError">Saved defaults could not be read. They were preserved; built-in form defaults are in use.</sys:String>
+    <sys:String x:Key="PreferencesSaveError">Defaults could not be saved. Check access and disk space; previous preferences were preserved.</sys:String>
+    <sys:String x:Key="CategoryInputError">Enter a category with 1–64 printable characters.</sys:String>
 </ResourceDictionary>

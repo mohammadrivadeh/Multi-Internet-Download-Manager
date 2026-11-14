@@ -55,7 +55,7 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
             RequireInitialized();
             if (jobs.Count >= 1000) throw new InvalidOperationException("Remove terminal history before adding more jobs.");
             var job = request with { Destination = Path.GetFullPath(request.Destination), CreatedAt = time.GetUtcNow(), State = QueueJobState.Queued,
-                CompletedBytes = 0, TotalBytes = null, FailureCode = null, Paths = Array.AsReadOnly(request.Paths.ToArray()) };
+                CompletedBytes = 0, TotalBytes = null, FailureCode = null, Category = DownloadCategory.Normalize(request.Category), Paths = Array.AsReadOnly(request.Paths.ToArray()) };
             job.Validate();
             if (jobs.ContainsKey(job.Id)) throw new InvalidOperationException("Job identity already exists.");
             if (jobs.Values.Any(j => j.State is not (QueueJobState.Cancelled or QueueJobState.Completed)
@@ -80,6 +80,21 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
             var changed = current.Transition(next);
             store.Save(changed);
             jobs[id] = changed;
+        }
+        finally { gate.Release(); }
+    }
+
+    public async Task SetCategoryAsync(Guid id, string category, CancellationToken token = default)
+    {
+        category = DownloadCategory.Normalize(category);
+        await gate.WaitAsync(token);
+        try
+        {
+            RequireInitialized();
+            var current = jobs[id];
+            if (current.State == QueueJobState.Running) throw new InvalidOperationException("Stop the active job before changing its category.");
+            var changed = current with { Category = category };
+            store.Save(changed); jobs[id] = changed;
         }
         finally { gate.Release(); }
     }

@@ -21,10 +21,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IDesktopServices desktop;
     private QueueCoordinator? queue;
     private bool autoRun;
+    private bool preferencesWritable;
     private long runGeneration;
     private readonly NetworkPathCatalog catalog = new();
     private readonly IDesktopTimer timer;
     public ObservableCollection<PathSelection> Paths { get; } = [];
+    public ObservableCollection<CategoryOption> Categories { get; } = [];
     public ObservableCollection<QueueRow> Jobs { get; } = [];
     public ListCollectionView JobsView { get; }
     [ObservableProperty] private string url = "";
@@ -32,6 +34,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string workerCount = "4";
     [ObservableProperty] private string expectedSha256 = "";
     [ObservableProperty] private string speedLimitKiB = "0";
+    [ObservableProperty] private string category = DownloadCategory.Default;
+    [ObservableProperty] private string categoryFilter = "";
     [ObservableProperty] private string priority = "0";
     [ObservableProperty] private string scheduledStart = "";
     [ObservableProperty] private bool useSystemRoute;
@@ -63,6 +67,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             queue = await session.InitializeAsync();
             await RefreshJobsAsync();
+            try
+            {
+                var saved = await session.LoadPreferencesAsync();
+                WorkerCount = saved.Workers.ToString(); SpeedLimitKiB = saved.SpeedLimitKiB.ToString();
+                Priority = saved.Priority.ToString(); Category = saved.Category;
+                preferencesWritable = true;
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException) { Status = Text("PreferencesLoadError"); }
             IsReady = true;
             timer.Start();
         }
@@ -77,9 +89,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (item is not QueueRow row) return false;
         return (string.IsNullOrWhiteSpace(Search) || row.Filename.Contains(Search, StringComparison.CurrentCultureIgnoreCase))
+            && (string.IsNullOrEmpty(CategoryFilter) || string.Equals(CategoryFilter, row.Job.Category, StringComparison.OrdinalIgnoreCase))
             && (StateFilter == "All" || StateFilter == "Active" && row.Job.State is QueueJobState.Queued or QueueJobState.Running or QueueJobState.Paused
                 || StateFilter == row.Job.State.ToString());
     }
+    partial void OnCategoryFilterChanged(string value) => JobsView.Refresh();
     partial void OnSearchChanged(string value) => JobsView.Refresh();
     partial void OnStateFilterChanged(string value) => JobsView.Refresh();
 
@@ -102,7 +116,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         IsReady = false; autoRun = false; timer.Stop(); stop?.Cancel();
         var tasks = new[] { RunQueueCommand.ExecutionTask, AddCommand.ExecutionTask, ResumeSelectedCommand.ExecutionTask,
-            CancelSelectedCommand.ExecutionTask, ClearHistoryCommand.ExecutionTask, RefreshCommand.ExecutionTask };
+            CancelSelectedCommand.ExecutionTask, ClearHistoryCommand.ExecutionTask, RefreshCommand.ExecutionTask, SaveDefaultsCommand.ExecutionTask, AssignCategoryCommand.ExecutionTask };
         try { await Task.WhenAll(tasks.Where(t => t is not null).Cast<Task>()); }
         catch (Exception ex) when (ex is not OutOfMemoryException) { Status = Text("QueueSaveError"); }
     }

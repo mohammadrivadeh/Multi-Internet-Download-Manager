@@ -73,6 +73,10 @@ public partial class MainViewModel
         {
             var snapshot = await queue.SnapshotAsync();
             var selected = SelectedJob?.Job.Id;
+            var selectedCategory = CategoryFilter;
+            Categories.Clear(); Categories.Add(new("", Text("AllCategoriesLabel")));
+            foreach (var name in snapshot.Select(j => j.Category).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(n => n)) Categories.Add(new(name, name));
+            CategoryFilter = Categories.Any(c => c.Key == selectedCategory) ? selectedCategory : "";
             Jobs.Clear();
             foreach (var job in snapshot.OrderByDescending(j => j.CreatedAt)) Jobs.Add(new(job, desktop));
             SelectedJob = Jobs.FirstOrDefault(j => j.Job.Id == selected);

@@ -12,8 +12,11 @@ public partial class PathSelection(NetworkPath path) : ObservableObject
     [ObservableProperty] private bool selected;
 }
 
+public sealed record CategoryOption(string Key, string Name);
+
 public sealed record QueueRow(QueueJob Job, IDesktopServices Desktop)
 {
+    public string Category => Job.Category;
     public string Filename => Path.GetFileName(Job.Destination);
     public string State => Desktop.Text($"QueueState{Job.State}");
     public string Schedule => Job.NotBefore?.ToString("yyyy-MM-dd HH:mm zzz") ?? "";

@@ -15,12 +15,15 @@
                 <TextBox x:Name="ChecksumInput" Text="{Binding ExpectedSha256, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource ChecksumLabel}"/>
                 <Label Content="{DynamicResource SpeedLimitLabel}" Target="{Binding ElementName=SpeedLimitInput}"/>
                 <TextBox x:Name="SpeedLimitInput" Text="{Binding SpeedLimitKiB, UpdateSourceTrigger=PropertyChanged}" Width="150" HorizontalAlignment="Left"/>
+                <Label Content="{DynamicResource CategoryLabel}" Target="{Binding ElementName=CategoryInput}"/>
+                <TextBox x:Name="CategoryInput" Text="{Binding Category, UpdateSourceTrigger=PropertyChanged}" MaxLength="64"/>
                 <Label Content="{DynamicResource PriorityLabel}" Target="{Binding ElementName=PriorityInput}"/>
                 <TextBox x:Name="PriorityInput" Text="{Binding Priority, UpdateSourceTrigger=PropertyChanged}" Width="110" HorizontalAlignment="Left"/>
                 <Label Content="{DynamicResource ScheduleLabel}" Target="{Binding ElementName=ScheduleInput}"/>
                 <TextBox x:Name="ScheduleInput" Text="{Binding ScheduledStart, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource ScheduleLabel}"/>
             </StackPanel>
             <WrapPanel IsEnabled="{Binding IsReady}">
+                <Button Content="{DynamicResource SaveDefaultsLabel}" Command="{Binding SaveDefaultsCommand}"/>
                 <Button Content="{DynamicResource AddLabel}" Command="{Binding AddCommand}"/>
                 <Button Content="{DynamicResource RunQueueLabel}" Command="{Binding RunQueueCommand}"/>
                 <Button Content="{DynamicResource PauseQueueLabel}" Command="{Binding PauseCommand}"/>

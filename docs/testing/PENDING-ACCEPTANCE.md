@@ -9,6 +9,7 @@ The user explicitly requested on 2026-11-14 that implementation continue without
 | IPv4/IPv6 and overlapping tether subnets | Pending user execution | Correct selected TCP interface, no unsafe fallback |
 | Network change and reconnect | Pending user execution | Cancellation, new discovery/session and successful resume |
 | Protected queue/profile and tamper regression | Pending Windows execution | Native DPAPI test in Windows CI, cross-profile refusal and preserved unreadable store |
+| Categories and saved desktop defaults | Pending Windows desktop execution | Category selection/filter/reclassification, DPAPI defaults reload and unreadable-file preservation |
 | Queue UI, close/save races and second instance | Pending Windows desktop execution | Add/requeue/cancel/history filtering, exclusive lease and awaited shutdown |
 | Scheduled start, stop and app restart | Pending desktop execution | Explicit offsets, no start while stopped/closed and Paused crash recovery |
 | WPF keyboard, screen reader, DPI and high contrast | Pending user execution | Actual desktop accessibility and responsiveness |
