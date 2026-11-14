@@ -1,14 +1,16 @@
 using System.ComponentModel;
 using System.Windows;
-namespace DownloadManager.App;
+using DownloadManager.App.ViewModels;
+namespace DownloadManager.App.Views.Shell;
 public partial class MainWindow : Window
 {
-    private readonly MainViewModel viewModel = new();
+    private readonly MainViewModel viewModel;
     private Task? initialization;
     private bool closing;
     private bool mayClose;
-    public MainWindow()
+    public MainWindow(MainViewModel viewModel)
     {
+        this.viewModel = viewModel;
         InitializeComponent();
         DataContext = viewModel;
         Loaded += async (_, _) => { initialization = LoadAsync(); await initialization; };

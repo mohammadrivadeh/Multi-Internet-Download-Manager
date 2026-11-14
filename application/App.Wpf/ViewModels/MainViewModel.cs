@@ -1,0 +1,128 @@
+using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.IO;
+using System.Windows.Data;
+using DownloadManager.App.Services;
+using DownloadManager.App.Models;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using DownloadManager.Core;
+using DownloadManager.Infrastructure.Networking;
+using DownloadManager.Infrastructure.Persistence;
+using DownloadManager.Infrastructure.Queueing;
+
+
+namespace DownloadManager.App.ViewModels;
+
+public partial class MainViewModel : ObservableObject, IDisposable
+{
+    private CancellationTokenSource? stop;
+    private readonly IQueueSession session;
+    private readonly IDesktopServices desktop;
+    private QueueCoordinator? queue;
+    private bool autoRun;
+    private long runGeneration;
+    private readonly NetworkPathCatalog catalog = new();
+    private readonly IDesktopTimer timer;
+    public ObservableCollection<PathSelection> Paths { get; } = [];
+    public ObservableCollection<QueueRow> Jobs { get; } = [];
+    public ListCollectionView JobsView { get; }
+    [ObservableProperty] private string url = "";
+    [ObservableProperty] private string destination = "";
+    [ObservableProperty] private string workerCount = "4";
+    [ObservableProperty] private string expectedSha256 = "";
+    [ObservableProperty] private string speedLimitKiB = "0";
+    [ObservableProperty] private string priority = "0";
+    [ObservableProperty] private string scheduledStart = "";
+    [ObservableProperty] private bool useSystemRoute;
+    [ObservableProperty] private bool isBusy;
+    [ObservableProperty] private bool isReady;
+    [ObservableProperty] private string status = "";
+    [ObservableProperty] private double percentage;
+    [ObservableProperty] private bool isIndeterminate;
+    [ObservableProperty] private string search = "";
+    [ObservableProperty] private string stateFilter = "All";
+    [ObservableProperty] private QueueRow? selectedJob;
+    private string Text(string key) => desktop.Text(key);
+
+    public MainViewModel(IDesktopServices desktop, IQueueSession session)
+    {
+        this.desktop = desktop; this.session = session;
+        Status = Text("ReadyStatus");
+        JobsView = new ListCollectionView(Jobs) { Filter = FilterJob };
+        timer = desktop.CreateTimer(async () =>
+        {
+            try { await CheckScheduleAsync(); }
+            catch (Exception ex) when (ex is not OutOfMemoryException) { autoRun = false; Status = Text("QueueLoadError"); }
+        });
+    }
+
+    public async Task InitializeAsync()
+    {
+        try
+        {
+            queue = await session.InitializeAsync();
+            await RefreshJobsAsync();
+            IsReady = true;
+            timer.Start();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            session.Dispose(); queue = null;
+            Status = Text("QueueLoadError");
+        }
+    }
+
+    private bool FilterJob(object item)
+    {
+        if (item is not QueueRow row) return false;
+        return (string.IsNullOrWhiteSpace(Search) || row.Filename.Contains(Search, StringComparison.CurrentCultureIgnoreCase))
+            && (StateFilter == "All" || StateFilter == "Active" && row.Job.State is QueueJobState.Queued or QueueJobState.Running or QueueJobState.Paused
+                || StateFilter == row.Job.State.ToString());
+    }
+    partial void OnSearchChanged(string value) => JobsView.Refresh();
+    partial void OnStateFilterChanged(string value) => JobsView.Refresh();
+
+    private void UpdateProgress(Guid id, DownloadProgress value)
+    {
+        var existing = Jobs.FirstOrDefault(row => row.Job.Id == id);
+        if (existing is not null && existing.Job.State is QueueJobState.Queued or QueueJobState.Running)
+        {
+            var replacement = new QueueRow(existing.Job with { State = QueueJobState.Running, CompletedBytes = value.CompletedBytes, TotalBytes = value.TotalBytes }, desktop);
+            var selected = SelectedJob?.Job.Id == id;
+            Jobs[Jobs.IndexOf(existing)] = replacement;
+            if (selected) SelectedJob = replacement;
+        }
+        IsIndeterminate = value.TotalBytes is null;
+        Percentage = value.TotalBytes is > 0 ? (double)value.CompletedBytes / value.TotalBytes.Value * 100 : value.Stage == DownloadStage.Completed ? 100 : 0;
+        Status = string.Format(System.Globalization.CultureInfo.CurrentCulture, Text("ProgressFormat"), Text($"Stage{value.Stage}"), value.CompletedBytes, value.TotalBytes?.ToString("N0") ?? Text("UnknownTotal"));
+    }
+
+    public async Task ShutdownAsync()
+    {
+        IsReady = false; autoRun = false; timer.Stop(); stop?.Cancel();
+        var tasks = new[] { RunQueueCommand.ExecutionTask, AddCommand.ExecutionTask, ResumeSelectedCommand.ExecutionTask,
+            CancelSelectedCommand.ExecutionTask, ClearHistoryCommand.ExecutionTask, RefreshCommand.ExecutionTask };
+        try { await Task.WhenAll(tasks.Where(t => t is not null).Cast<Task>()); }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { Status = Text("QueueSaveError"); }
+    }
+
+    public void Dispose()
+    { autoRun = false; timer.Stop(); session.Dispose(); }
+
+    private sealed class UiProgress(IDesktopServices desktop, Action<Guid, DownloadProgress> update)
+    {
+        private readonly Stopwatch watch = Stopwatch.StartNew();
+        private readonly object sync = new();
+        private (Guid, DownloadStage)? previous;
+        public void Report(Guid id, DownloadProgress value)
+        {
+            lock (sync)
+            {
+                if (previous == (id, value.Stage) && watch.ElapsedMilliseconds < 100) return;
+                previous = (id, value.Stage); watch.Restart();
+                desktop.Post(() => update(id, value));
+            }
+        }
+    }
+}

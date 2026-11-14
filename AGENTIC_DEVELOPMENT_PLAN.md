@@ -15,6 +15,10 @@ This document is self-contained. An implementation agent must not require the or
 
 The original request was documentation only. The user subsequently authorized implementation on 2026-11-14; reading this document alone does not authorize unrelated scope. Once the user instructs an agent to implement the project, carry out the authorized phases without repeatedly requesting approval for routine reversible engineering decisions.
 
+## Current scope amendment
+
+On 2026-11-14 the user removed browser extensions/integration and Site Grabber from scope. These are excluded, not pending implementation. Other approved engine, desktop, protocol and media work remains in scope. Continue implementation without waiting for external acceptance; keep unexecuted checks explicit.
+
 ## 1. Product objective
 
 Build an independent Windows download manager that downloads a file concurrently over multiple independently connected internet interfaces. Examples include home Wi-Fi, two phones connected through USB tethering, Ethernet, and USB network adapters.
@@ -451,26 +455,21 @@ IDM-like scope means a tracked capability matrix. It does not mean copying brand
 | Batch import/export, duplicate detection, drag and drop | Base product |
 | Optional clipboard-link detection | Base product |
 | Authentication and proxy configuration | Infrastructure baseline, expanded later |
-| Edge/Chrome/Firefox browser extensions | Browser integration |
-| Download capture with required session context | Browser integration |
-| Refresh expired download address safely | Browser integration |
+| Browser extensions and native messaging | Excluded by user |
+| Browser download capture | Excluded by user |
+| Refresh expired download address safely | Engine/session work; no browser integration |
 | Non-DRM media capture on explicitly supported sites | Media module |
 | HLS/DASH manifests, track handling and optional muxing | Media module |
 | FTP/FTPS | Advanced protocol module |
-| Site Grabber with filters, scope and crawl limits | Advanced module |
+| Site Grabber / website crawling | Excluded by user |
 | Periodic file/site synchronization | Advanced module |
 | Optional installed-antivirus integration | Advanced module |
 
 SFTP is distinct from FTP/FTPS and requires a separate scope decision. Multiple-mirror download acceleration also requires a separate identity-verification design.
 
-### 13.1 Browser integration rules
+### 13.1 Excluded capabilities
 
-- Prefer browser extensions and native messaging over system-wide traffic interception.
-- Request only required extension permissions and make capture opt-in/configurable.
-- Never assume every browser download is a replayable GET URL.
-- Securely transfer the minimum request context needed; do not export the entire browser cookie store.
-- Refreshing a URL must revalidate content identity before resuming old bytes.
-- Explicitly list tested sites/flows and known limitations.
+Browser extensions, native messaging, browser capture and Site Grabber are excluded by user instruction. Do not add them back through the parity roadmap. Manual direct-URL downloads and separately approved media/protocol work remain independent capabilities.
 
 ### 13.2 Media and advanced scope
 
@@ -643,15 +642,13 @@ Deliverables: English UI, queues, settings, connection management, charts, segme
 
 Exit gate: core workflows and installation validated on Windows 10 and 11; UI remains responsive under load.
 
-### Phase 6 - Browser integration
+### Phase 6 - Removed from scope
 
-Deliverables: extensions, native messaging, controlled capture, request context handling and address refresh.
-
-Exit gate: supported browser flows are enumerated and verified; secrets handled safely.
+Browser integration is excluded by user instruction. This phase is retained only as a stable historical identifier and has no implementation backlog.
 
 ### Phase 7 - Advanced features
 
-Deliverables: individually accepted media support, FTP/FTPS, Site Grabber, synchronization and remaining parity items.
+Deliverables: individually accepted media support, FTP/FTPS, synchronization and remaining parity items.
 
 Exit gate: each module has independent compatibility, correctness and footprint evidence. Do not delay the base product until all advanced features exist.
 
@@ -732,7 +729,7 @@ The list is intentionally unchecked; this document does not claim application wo
 - [ ] Build English WPF workflows and connection cards.
 - [ ] Validate responsive UI, DPI and reduced motion on Windows 10/11.
 - [ ] Add base-product queues, scheduling and management features.
-- [ ] Add browser integration with a documented compatibility list.
+- Excluded: browser integration and Site Grabber (user instruction, 2026-11-14).
 - [ ] Implement advanced parity features as separate accepted slices.
 
 ## 20. Reference documentation

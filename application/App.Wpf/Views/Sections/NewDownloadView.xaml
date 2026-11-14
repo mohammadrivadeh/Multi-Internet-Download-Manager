@@ -1,0 +1,28 @@
+<UserControl x:Class="DownloadManager.App.Views.Sections.NewDownloadView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="16">            <StackPanel IsEnabled="{Binding IsReady}">
+                <Label Content="{DynamicResource UrlLabel}" Target="{Binding ElementName=UrlInput}"/>
+                <TextBox x:Name="UrlInput" Text="{Binding Url, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource UrlLabel}"/>
+                <Label Content="{DynamicResource DestinationLabel}" Target="{Binding ElementName=DestinationInput}"/>
+                <DockPanel><Button Content="{DynamicResource BrowseLabel}" Command="{Binding BrowseCommand}" DockPanel.Dock="Right"/><TextBox x:Name="DestinationInput" Text="{Binding Destination, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource DestinationLabel}"/></DockPanel>
+                <TextBlock Text="{DynamicResource ConnectionsLabel}" FontSize="18" FontWeight="SemiBold" Margin="0,12,0,6"/>
+                <Button Content="{DynamicResource RefreshLabel}" Command="{Binding RefreshCommand}" HorizontalAlignment="Left"/>
+                <ListBox ItemsSource="{Binding Paths}" MaxHeight="150" VirtualizingPanel.IsVirtualizing="True" ScrollViewer.CanContentScroll="True" BorderThickness="0">
+                    <ListBox.ItemTemplate><DataTemplate><CheckBox IsChecked="{Binding Selected}" Content="{Binding Label}" Padding="4"/></DataTemplate></ListBox.ItemTemplate>
+                </ListBox>
+                <CheckBox IsChecked="{Binding UseSystemRoute}" Content="{DynamicResource SystemRouteLabel}" Margin="0,12"/>
+                <Label Content="{DynamicResource WorkersLabel}" Target="{Binding ElementName=WorkersInput}"/>
+                <TextBox x:Name="WorkersInput" Text="{Binding WorkerCount, UpdateSourceTrigger=PropertyChanged}" Width="110" HorizontalAlignment="Left" AutomationProperties.Name="{DynamicResource WorkersLabel}"/>
+                <Label Content="{DynamicResource ChecksumLabel}" Target="{Binding ElementName=ChecksumInput}"/>
+                <TextBox x:Name="ChecksumInput" Text="{Binding ExpectedSha256, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource ChecksumLabel}"/>
+                <Label Content="{DynamicResource SpeedLimitLabel}" Target="{Binding ElementName=SpeedLimitInput}"/>
+                <TextBox x:Name="SpeedLimitInput" Text="{Binding SpeedLimitKiB, UpdateSourceTrigger=PropertyChanged}" Width="150" HorizontalAlignment="Left"/>
+                <Label Content="{DynamicResource PriorityLabel}" Target="{Binding ElementName=PriorityInput}"/>
+                <TextBox x:Name="PriorityInput" Text="{Binding Priority, UpdateSourceTrigger=PropertyChanged}" Width="110" HorizontalAlignment="Left"/>
+                <Label Content="{DynamicResource ScheduleLabel}" Target="{Binding ElementName=ScheduleInput}"/>
+                <TextBox x:Name="ScheduleInput" Text="{Binding ScheduledStart, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource ScheduleLabel}"/>
+            </StackPanel>
+            <WrapPanel IsEnabled="{Binding IsReady}">
+                <Button Content="{DynamicResource AddLabel}" Command="{Binding AddCommand}"/>
+                <Button Content="{DynamicResource RunQueueLabel}" Command="{Binding RunQueueCommand}"/>
+                <Button Content="{DynamicResource PauseQueueLabel}" Command="{Binding PauseCommand}"/>
+            </WrapPanel>
+</StackPanel></ScrollViewer></UserControl>

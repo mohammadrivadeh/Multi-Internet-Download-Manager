@@ -29,7 +29,7 @@
     <sys:String x:Key="DiscoveryError">Could not read network connections. Refresh and try again.</sys:String>
     <sys:String x:Key="ProgressFormat">{0} · {1:N0} / {2} bytes</sys:String>
     <sys:String x:Key="UnknownTotal">unknown</sys:String>
-    <sys:String x:Key="ValidationNote">Hardware routing acceptance is pending. Existing destination files are never overwritten. HTTP(S) redirects are bounded; authenticated sites and browser capture are not supported in this version.</sys:String>
+    <sys:String x:Key="ValidationNote">Existing destination files are never overwritten. Choose the connections you want to use; downloaded files are not opened automatically.</sys:String>
     <sys:String x:Key="PriorityLabel">Priority (-10 to 10; higher runs first)</sys:String>
     <sys:String x:Key="ScheduleLabel">Start at (optional ISO 8601 time with UTC offset)</sys:String>
     <sys:String x:Key="AddLabel">Add to queue</sys:String>

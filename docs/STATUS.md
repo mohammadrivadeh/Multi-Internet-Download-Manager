@@ -15,7 +15,7 @@ Updated 2026-11-14. The user authorized merging to main and continuing without w
 - One active file at a time, aging-based ready selection, five-second due-job checks after Start queue, and awaited download/save/initialization shutdown.
 - Optional per-job payload speed cap shared across all ranged workers/retries and sequential fallback; saved in the protected job configuration and displayed in KiB/s.
 - Console probe/download harnesses, synthetic fixture server and Linux/Windows GitHub Actions build/test workflow.
-- ADRs 0001–0008, architecture notes, acceptance procedures and backlog.
+- ADRs 0001–0009, architecture notes, acceptance procedures and backlog.
 
 ## Validation completed on the current machine
 
@@ -38,8 +38,8 @@ Updated 2026-11-14. The user authorized merging to main and continuing without w
 | Phase 3: adaptive multi-path | Shared pending pool, adaptive range sizing and selected transports implemented | Active-tail splitting/fenced leases, adaptive concurrency, fairness across jobs, real benchmarks |
 | Phase 4: durable recovery | SQLite checkpoint ordering, hashed resume and finalization implemented | Process-kill/power-loss and disk-failure injection, migrations beyond schema 1, large checkpoint optimization |
 | Phase 5: WPF base product | Functional desktop, protected queue/history, priority, one-time start scheduling, search/filter and per-download aggregate speed cap implemented | Categories, per-path caps/accounting quotas, recurring schedule windows, concurrent-job fairness, tray, notifications, settings UI, accessibility/DPI acceptance, installer |
-| Phase 6: browser integration | Not implemented | Extensions, native messaging, minimal protected request context and expired-link refresh |
-| Phase 7: advanced modules | Not implemented | Supported-site non-DRM media, HLS/DASH, FTP/FTPS, Site Grabber, sync and antivirus integration |
+| Phase 6: browser integration | Excluded by user | No browser extensions, native messaging or capture work |
+| Phase 7: advanced modules | Not implemented | Supported-site non-DRM media, HLS/DASH, FTP/FTPS, sync and antivirus integration |
 
 No claim is made that all phases or IDM feature parity are complete. No routes, firewall settings, public release or external deployment were changed.
 
@@ -75,3 +75,9 @@ The current limit measures accepted application payload, not wire traffic or bil
 Supported statuses: 301/302/303/307/308; maximum eight redirects within a shared thirty-second header deadline. Tests cover header forwarding and stripping, invalid targets, loops/hop limits, cancellation, ranged/sequential completion, and refusal to mix final URIs across paths or resume. A real local three-hop HTTP download matched the authoritative fixture SHA-256; a loop was rejected before partial state was created. Existing direct-URL checkpoint identity remains compatible. Diagnostic NetworkProbe behavior is intentionally unchanged.
 
 The GitHub Actions API request returned 403, so remote CI results remain unverified. Linux tests and cross-compilation do not establish real TLS, Windows desktop or independent interface acceptance.
+
+## Scope and desktop architecture update
+
+Browser integration/extensions and Site Grabber were removed by the user, not deferred. The remaining roadmap continues. WPF now separates Views/Shell, Views/Sections, ViewModels, Models, Services, Resources and Themes. App is the explicit composition root; desktop dialogs, dispatch/scheduling and protected queue lifetime have injected adapters. Shell commands are organized into focused partial files. Form, queue and status views share the shell presentation state; independent feature ViewModels can be introduced with further behavior rather than speculative frameworks.
+
+The queue occupies a bounded Grid viewport with row/column virtualization; only the form scrolls. System color resources and default control focus behavior are retained. Release build and 104 automated regressions pass, one Windows-only DPAPI test remains skipped on Linux. Actual WPF layout, accessibility and lifecycle acceptance remain pending Windows execution.

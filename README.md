@@ -16,7 +16,7 @@ Independent Windows 10/11 x64 download manager, under active development. The [a
 - Sequential job processing, explicit requeue of paused/failed jobs and cancellation without deleting data files.
 - A per-download KiB/s speed cap shared across all its workers, with zero meaning unlimited.
 
-Windows routing, WPF execution and real-device performance still require acceptance. Development continues without waiting for those results; see [the acceptance register](docs/testing/PENDING-ACCEPTANCE.md). Tray, recurring schedules, categories, browser capture, media and advanced protocols remain future work in [status](docs/STATUS.md).
+Windows routing, WPF execution and real-device performance still require acceptance. Development continues without waiting for those results; see [the acceptance register](docs/testing/PENDING-ACCEPTANCE.md). Tray, recurring schedules, categories, media and advanced protocols remain future work in [status](docs/STATUS.md).
 
 ## Build and test
 
@@ -79,3 +79,9 @@ The Core stays independent of WPF, SQLite, Windows interop and concrete HTTP. Pr
 ## Redirected sources
 
 The engine preserves range headers through a bounded redirect chain and validates the final resource URI, strong ETag and length. Every selected path and range must resolve to the same final resource. Changing that final URI prevents reuse of old redirected checkpoints even if ETag and size match; preserve the partial state and choose another destination. The NetworkProbe remains a single-response diagnostic and intentionally does not follow redirects. Custom engine clients must disable handler redirects/cookies/decompression and have no default headers; per-hop requests use a protocol-header allowlist.
+
+## Scope and source layout
+
+Browser extensions/integration and Site Grabber are **excluded by user request**. They are not future deliverables. The remaining scope and incomplete acceptance are listed in docs/STATUS.md.
+
+The desktop uses explicit application composition, focused shell command modules, separate section views and injected desktop/queue-session adapters. See [desktop architecture](docs/architecture/desktop-structure.md) for the folder map and ownership rules.
