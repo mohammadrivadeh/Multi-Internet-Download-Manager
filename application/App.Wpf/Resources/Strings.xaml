@@ -73,7 +73,7 @@
     <sys:String x:Key="AllCategoriesLabel">All categories</sys:String>
     <sys:String x:Key="AssignCategoryLabel">Apply category to selected</sys:String>
     <sys:String x:Key="SaveDefaultsLabel">Save form defaults</sys:String>
-    <sys:String x:Key="PreferencesSavedStatus">Defaults saved: workers, speed cap, priority and category. Source, destination, connections and scheduled start are not saved as defaults.</sys:String>
+    <sys:String x:Key="PreferencesSavedStatus">Defaults saved: workers, speed cap, priority category and optional base folder. Source, destination file, connections and scheduled start are not saved as defaults.</sys:String>
     <sys:String x:Key="PreferencesLoadError">Saved defaults could not be read. They were preserved; built-in form defaults are in use.</sys:String>
     <sys:String x:Key="PreferencesSaveError">Defaults could not be saved. Check access and disk space; previous preferences were preserved.</sys:String>
     <sys:String x:Key="CategoryInputError">Enter a category with 1–64 printable characters.</sys:String>
@@ -88,4 +88,9 @@
     <sys:String x:Key="WindowEndLabel">Window end (HH:mm)</sys:String>
     <sys:String x:Key="WindowOffsetLabel">Fixed UTC offset (+03:30, for example)</sys:String>
 <sys:String x:Key="PathSpeedLimitLabel">Connection cap for this job (KiB/s; 0 unlimited)</sys:String>
+    <sys:String x:Key="DestinationRulesLabel">Destination folder rules</sys:String>
+    <sys:String x:Key="DestinationRootLabel">Base download folder</sys:String>
+    <sys:String x:Key="ChooseRootLabel">Choose base folder</sys:String>
+    <sys:String x:Key="SuggestDestinationLabel">Suggest category destination</sys:String>
+    <sys:String x:Key="DestinationRuleError">Choose an existing base folder and a category/URL filename valid on Windows, or choose a destination manually. Linked folders are unsupported by automatic rules.</sys:String>
 </ResourceDictionary>

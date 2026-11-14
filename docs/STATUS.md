@@ -15,12 +15,12 @@ Updated 2026-11-14. The user authorized merging to main and continuing without w
 - One active file at a time, aging-based ready selection, five-second due-job checks after Start queue, and awaited download/save/initialization shutdown.
 - Optional per-job payload speed cap shared across all ranged workers/retries and sequential fallback; saved in the protected job configuration and displayed in KiB/s.
 - Console probe/download harnesses, synthetic fixture server and Linux/Windows GitHub Actions build/test workflow.
-- ADRs 0001–0014, architecture notes, acceptance procedures and backlog.
+- ADRs 0001–0015, architecture notes, acceptance procedures and backlog.
 
 ## Validation completed on the current machine
 
 - Release solution build, all eight projects: **0 warnings, 0 errors**.
-- Automated tests: **129 passed, 0 failed, 1 skipped** (42 Core passed; 87 integration passed, 1 Windows-only DPAPI skipped).
+- Automated tests: **138 passed, 0 failed, 1 skipped** (50 Core passed; 88 integration passed, 1 Windows-only DPAPI skipped).
 - Tested: interval boundaries, randomized exact coverage, stale snapshots, HTTP request/response behavior, invalid identity/header rejection before writes, short/oversized bodies, cancellation, sparse offset above 4 GiB, complete downloads, SQLite resume, damaged checkpoint data repair, changed-resource rejection, differing representations across paths, sequential fallback, checksum failure, destination collision including a race at finalization, and long Retry-After refusal without retrying early. Queue tests additionally cover priority aging, explicit-offset schedules, state transitions, encrypted persistence/tamper rejection, exclusive ownership, duplicate destinations/runners, cancellation ordering, failure progression, restart recovery and protected history after a real scheduled HTTP transfer. Rate-policy tests cover shared concurrent reservations, no idle credit, aggregate engine delivery pacing in segmented/sequential modes, cancellation and saved cap settings.
 - Tests configured at 16, 32 and 64 workers verified more than eight overlapping simulated requests and correct full output. These are correctness tests, not speed benchmarks or real interface aggregation.
 - Real local end-to-end smoke: ASP.NET fixture server → HTTP probe → range transfer → SQLite checkpoints → final file; compared with authoritative fixture SHA-256 and verified sidecar cleanup. A 16-worker configuration was used; the small fixture needs only one default-sized range, so this smoke does not establish 16 concurrent network requests.
@@ -37,7 +37,7 @@ Updated 2026-11-14. The user authorized merging to main and continuing without w
 | Phase 2: single-path engine | Initial full-file engine, validated ranges and sequential fallback implemented | Richer failure diagnostics, auth/context, more failure-server cases |
 | Phase 3: adaptive multi-path | Shared pending pool, adaptive range sizing and selected transports implemented | Active-tail splitting/fenced leases, adaptive concurrency, fairness across jobs, real benchmarks |
 | Phase 4: durable recovery | SQLite checkpoint ordering, hashed resume and finalization implemented | Process-kill/power-loss and disk-failure injection, migrations beyond schema 1, large checkpoint optimization |
-| Phase 5: WPF base product | Functional desktop, protected queue/history, priority, one-time start scheduling, search/filter and per-download aggregate speed cap implemented | Automatic category destination rules, persistent consumption quotas/metered accounting, weekday/DST schedule rules, concurrent-job fairness, tray, notifications, settings UI, accessibility/DPI acceptance, installer |
+| Phase 5: WPF base product | Functional desktop, protected queue/history, priority, one-time start scheduling, search/filter and per-download aggregate speed cap implemented | Extension-based destination rules, persistent consumption quotas/metered accounting, weekday/DST schedule rules, concurrent-job fairness, tray, notifications, settings UI, accessibility/DPI acceptance, installer |
 | Phase 6: browser integration | Excluded by user | No browser extensions, native messaging or capture work |
 | Phase 7: advanced modules | Not implemented | Supported-site non-DRM media, HLS/DASH, FTP/FTPS, sync and antivirus integration |
 
@@ -103,3 +103,7 @@ See docs/REMAINING-WORK.md for the complete remaining register. Daily fixed-offs
 ## Per-connection cap increment
 
 Each selected address now captures its own KiB/s cap, protected with its queue entry. A transport's workers share one limiter and combine it with the job limiter. Sequential fallback respects its selected transport's limit. Discovery refresh preserves unsaved settings for unchanged addresses. These are accepted-payload caps, not wire-level shaping or billing quotas. Per-path quota accounting is still open in the remaining-work register.
+
+## Category destination rules increment
+
+Added explicit category-folder destination suggestions, existing-base folder selection and protected storage of the optional base folder. Windows leaf validation rejects traversal, encoded separators, device/stream names and unsafe suffixes. Add creates only the validated generated category directory; manual paths are not auto-created or overridden. Native dialog, junction/long-path and hostile-local-process TOCTOU behavior remain outside Linux validation. Extension/content-type routing and automatic conflict renaming remain future work.

@@ -10,7 +10,7 @@ The user requested consolidated execution. This register makes scope explicit; i
 | Scheduling | One-time starts and daily fixed-offset transfer windows | Weekday/time-zone/DST rules and optional OS wake/start integration |
 | Connection policy | Explicit selected-path sessions, shared per-download and per-path caps | Usage accounting, persistent quotas and metered policy |
 | Desktop | Modular WPF, categories, defaults, live progress/details | Tray, notifications, visual refinement and complete accessibility acceptance |
-| Destinations | Explicit no-overwrite destination and category metadata | Automatic folder rules, batch import/export and richer collision choices |
+| Destinations | Explicit no-overwrite destination, category metadata and safe category-folder suggestions | Extension/content-type rules, batch import/export and richer collision choices |
 | Recovery | Flushed hashed checkpoints, queue save retry, cleanup notices | Process-kill/power-failure and disk-removal/full tests; large checkpoint optimization |
 | Distribution | Portable Windows x64 cross-build and CI workflow | Installer/uninstaller, signing, clean-machine verification and update integrity |
 | Protocol/media | HTTP(S) | FTP/FTPS, scoped non-DRM HLS/DASH handling and packaging |

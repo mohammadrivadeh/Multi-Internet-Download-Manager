@@ -20,6 +20,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IQueueSession session;
     private readonly IDesktopServices desktop;
     private QueueCoordinator? queue;
+    private PlannedDestination? plannedDestination;
     private bool autoRun;
     private bool preferencesWritable;
     private long runGeneration;
@@ -33,6 +34,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public ObservableCollection<QueueRow> Jobs { get; } = [];
     public ListCollectionView JobsView { get; }
     [ObservableProperty] private string url = "";
+    [ObservableProperty] private string destinationRoot = "";
     [ObservableProperty] private string destination = "";
     [ObservableProperty] private string workerCount = "4";
     [ObservableProperty] private string expectedSha256 = "";
@@ -79,7 +81,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 var saved = await session.LoadPreferencesAsync();
                 WorkerCount = saved.Workers.ToString(); SpeedLimitKiB = saved.SpeedLimitKiB.ToString();
-                Priority = saved.Priority.ToString(); Category = saved.Category;
+                Priority = saved.Priority.ToString(); Category = saved.Category; DestinationRoot = saved.DestinationRoot ?? "";
                 preferencesWritable = true;
             }
             catch (Exception ex) when (ex is not OutOfMemoryException) { Status = Text("PreferencesLoadError"); }

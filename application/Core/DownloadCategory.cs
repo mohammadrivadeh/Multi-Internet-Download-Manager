@@ -15,6 +15,7 @@ public static class DownloadCategory
 
 public sealed record DesktopPreferences
 {
+    public string? DestinationRoot { get; init; }
     public int Workers { get; init; } = 4;
     public long SpeedLimitKiB { get; init; }
     public int Priority { get; init; }
@@ -24,5 +25,6 @@ public sealed record DesktopPreferences
         if (Workers is < 1 or > 128 || SpeedLimitKiB is < 0 or > 1048576 || Priority is < -10 or > 10)
             throw new ArgumentException("Invalid desktop defaults.");
         _ = DownloadCategory.Normalize(Category);
+        if (DestinationRoot is { } root && (!Path.IsPathFullyQualified(root) || root.Length > 32000)) throw new ArgumentException("Invalid destination root.");
     }
 }

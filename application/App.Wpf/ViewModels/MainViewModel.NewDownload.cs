@@ -23,6 +23,22 @@ public partial class MainViewModel
     }
 
     [RelayCommand]
+    private void ChooseRoot()
+    { if (desktop.ChooseFolder() is { } root) DestinationRoot = root; }
+
+    [RelayCommand]
+    private void SuggestDestination()
+    {
+        try
+        {
+            plannedDestination = DestinationRules.Plan(DestinationRoot, Category, new Uri(Url, UriKind.Absolute));
+            Destination = plannedDestination.FullPath;
+        }
+        catch (Exception ex) when (ex is ArgumentException or FormatException or System.IO.IOException)
+        { plannedDestination = null; Status = Text("DestinationRuleError"); }
+    }
+
+    [RelayCommand]
     private async Task AddAsync()
     {
         if (!IsReady || queue is null) return;
@@ -41,6 +57,9 @@ public partial class MainViewModel
                 DailyWindow = DailyTransferWindow.Parse(WindowStart, WindowEnd, WindowOffset), Category = DownloadCategory.Normalize(Category), Priority = priorityValue, NotBefore = QueueScheduling.ParseStart(ScheduledStart)
             };
             job.Validate();
+            var plan = plannedDestination;
+            if (plan is not null && string.Equals(System.IO.Path.GetFullPath(job.Destination), plan.FullPath, StringComparison.OrdinalIgnoreCase))
+                await Task.Run(() => DestinationDirectory.CreateFor(plan));
             await Task.Run(() => queue.EnqueueAsync(job));
             await RefreshJobsAsync();
             Status = Text("AddedStatus");

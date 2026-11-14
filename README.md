@@ -88,9 +88,9 @@ The desktop uses explicit application composition, focused shell command modules
 
 ## Categories and desktop defaults
 
-Enter a category in the form when adding a job. Use the category filter to narrow history, or Apply category to selected to reclassify a non-running entry. Names contain 1–64 printable characters; existing jobs without a category appear under General. Reclassification never moves or deletes files. Automatic folder rules are not implemented.
+Enter a category in the form when adding a job. Use the category filter to narrow history, or Apply category to selected to reclassify a non-running entry. Names contain 1–64 printable characters; existing jobs without a category appear under General. Reclassification never moves or deletes files. Category-based destination suggestions are available through the explicit folder-rule controls.
 
-Save form defaults persists workers, speed cap, priority and category in DPAPI-protected `preferences.bin` beside `queue.sqlite`. It does not save the source URL, destination, checksum, connections, schedule or queue autorun. Saved queue entries keep their own captured settings. Unreadable settings are preserved and built-in values are used; to reset, close the app and back up/rename the unreadable preferences file before restarting. Defaults cannot be overwritten through the UI after a load failure.
+Save form defaults persists workers, speed cap, priority, category and an optional base folder in DPAPI-protected `preferences.bin` beside `queue.sqlite`. It does not save the source URL, destination, checksum, connections, schedule or queue autorun. Saved queue entries keep their own captured settings. Unreadable settings are preserved and built-in values are used; to reset, close the app and back up/rename the unreadable preferences file before restarting. Defaults cannot be overwritten through the UI after a load failure.
 
 ## Live transfer status
 
@@ -109,3 +109,7 @@ Expand Daily transfer window and enter both HH:mm boundaries plus an explicit of
 ## Per-connection speed limits
 
 Each discovered connection has a KiB/s input beside its selection; zero is unlimited. Add to queue captures this cap with that address. Workers using the same selected path share the path cap, while the download cap still limits their aggregate. System-route mode ignores the selected-path inputs. Existing queued jobs are unchanged by later form edits. These limits govern accepted payload, not OS wire traffic, ISP consumption or persistent data quotas.
+
+## Category destination suggestions
+
+Under Destination folder rules, choose an existing base folder and click Suggest category destination. The proposed path is `base/category/URL-filename`; review or edit it before Add to queue. Query strings are excluded. A trailing-slash URL uses download.bin. Invalid Windows names/traversal/encoded separators are rejected rather than silently renamed. Matching generated category folders are created only when adding the validated job; manual destination edits do not trigger automatic folder creation. Linked/reparse folders are unsupported by these automatic rules. The optional base folder can be saved with form defaults; the complete destination filename is not saved as a default.

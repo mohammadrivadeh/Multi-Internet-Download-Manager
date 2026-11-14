@@ -291,8 +291,9 @@ public class QueueTests
             var filename = Path.Combine(directory, "preferences.bin");
             var store = new PreferencesStore(filename, protector);
             Assert.Equal(4, store.Load().Workers);
-            store.Save(new DesktopPreferences { Workers = 16, SpeedLimitKiB = 128, Priority = 2, Category = " PrivateCategory " });
+            store.Save(new DesktopPreferences { Workers = 16, SpeedLimitKiB = 128, Priority = 2, Category = " PrivateCategory ", DestinationRoot = directory });
             var saved = store.Load();
+            Assert.Equal(directory, saved.DestinationRoot);
             Assert.Equal(16, saved.Workers); Assert.Equal(128, saved.SpeedLimitKiB); Assert.Equal("PrivateCategory", saved.Category);
             var original = File.ReadAllBytes(filename);
             Assert.DoesNotContain("PrivateCategory", Encoding.UTF8.GetString(original));

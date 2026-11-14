@@ -1,6 +1,10 @@
 <UserControl x:Class="DownloadManager.App.Views.Sections.NewDownloadView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="16">            <StackPanel IsEnabled="{Binding IsReady}">
                 <Label Content="{DynamicResource UrlLabel}" Target="{Binding ElementName=UrlInput}"/>
                 <TextBox x:Name="UrlInput" Text="{Binding Url, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource UrlLabel}"/>
+                <Expander Header="{DynamicResource DestinationRulesLabel}"><StackPanel>
+                    <TextBox Text="{Binding DestinationRoot, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource DestinationRootLabel}"/>
+                    <WrapPanel><Button Content="{DynamicResource ChooseRootLabel}" Command="{Binding ChooseRootCommand}"/><Button Content="{DynamicResource SuggestDestinationLabel}" Command="{Binding SuggestDestinationCommand}"/></WrapPanel>
+                </StackPanel></Expander>
                 <Label Content="{DynamicResource DestinationLabel}" Target="{Binding ElementName=DestinationInput}"/>
                 <DockPanel><Button Content="{DynamicResource BrowseLabel}" Command="{Binding BrowseCommand}" DockPanel.Dock="Right"/><TextBox x:Name="DestinationInput" Text="{Binding Destination, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource DestinationLabel}"/></DockPanel>
                 <TextBlock Text="{DynamicResource ConnectionsLabel}" FontSize="18" FontWeight="SemiBold" Margin="0,12,0,6"/>

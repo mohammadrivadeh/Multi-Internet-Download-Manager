@@ -7,6 +7,7 @@ public interface IDesktopServices
 {
     string Text(string key);
     string? ChooseDestination();
+    string? ChooseFolder();
     void Post(Action action);
     IDesktopTimer CreateTimer(Func<Task> tick);
 }
@@ -18,6 +19,11 @@ public sealed class DesktopServices(Dispatcher dispatcher) : IDesktopServices
     {
         var picker = new SaveFileDialog { OverwritePrompt = false };
         return picker.ShowDialog() == true ? picker.FileName : null;
+    }
+    public string? ChooseFolder()
+    {
+        var picker = new OpenFolderDialog();
+        return picker.ShowDialog() == true ? picker.FolderName : null;
     }
     public void Post(Action action) => dispatcher.InvokeAsync(action);
     public IDesktopTimer CreateTimer(Func<Task> tick) => new DesktopTimer(dispatcher, tick);

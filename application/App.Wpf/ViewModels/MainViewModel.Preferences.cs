@@ -10,7 +10,7 @@ public partial class MainViewModel
         if (!preferencesWritable) { Status = Text("PreferencesLoadError"); return; }
         try
         {
-            var settings = new DesktopPreferences { Workers = int.Parse(WorkerCount), SpeedLimitKiB = long.Parse(SpeedLimitKiB), Priority = int.Parse(Priority), Category = Category };
+            var settings = new DesktopPreferences { Workers = int.Parse(WorkerCount), SpeedLimitKiB = long.Parse(SpeedLimitKiB), Priority = int.Parse(Priority), Category = Category, DestinationRoot = string.IsNullOrWhiteSpace(DestinationRoot) ? null : DestinationRoot };
             settings.Validate(); await session.SavePreferencesAsync(settings);
             Status = Text("PreferencesSavedStatus");
         }
