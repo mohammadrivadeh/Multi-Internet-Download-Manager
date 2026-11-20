@@ -6,6 +6,7 @@ public enum QueueJobState { Queued, Running, Paused, Completed, Failed, Cancelle
 public sealed record QueuedPath(string AdapterId, string SourceAddress, long? BytesPerSecondLimit = null);
 public sealed record QueueJob
 {
+    public const string MainQueue = "Main";
     public Guid Id { get; init; } = Guid.NewGuid();
     public required Uri Source { get; init; }
     public required string Destination { get; init; }
@@ -13,6 +14,7 @@ public sealed record QueueJob
     public bool UseSystemRoute { get; init; }
     public IReadOnlyList<QueuedPath> Paths { get; init; } = [];
     public string Category { get; init; } = DownloadCategory.Default;
+    public string QueueName { get; init; } = MainQueue;
     public int Priority { get; init; }
     public DateTimeOffset CreatedAt { get; init; }
     public DailyTransferWindow? DailyWindow { get; init; }
@@ -33,6 +35,8 @@ public sealed record QueueJob
         Options.Validate();
         DailyWindow?.Validate();
         _ = DownloadCategory.Normalize(Category);
+        if (string.IsNullOrWhiteSpace(QueueName) || QueueName != QueueName.Trim() || QueueName.Length > 48 || QueueName.Any(char.IsControl))
+            throw new ArgumentException("Invalid queue name.", nameof(QueueName));
         if (Priority is < -10 or > 10) throw new ArgumentOutOfRangeException(nameof(Priority));
         if (!UseSystemRoute && (Paths.Count == 0 || Paths.Count > Options.Workers))
             throw new ArgumentException("Select allowed paths and allocate at least one worker per path.");
@@ -50,7 +54,7 @@ public sealed record QueueJob
         var allowed = State switch
         {
             QueueJobState.Queued => next is QueueJobState.Running or QueueJobState.Paused or QueueJobState.Cancelled,
-            QueueJobState.Running => next is QueueJobState.Queued or QueueJobState.Paused or QueueJobState.Completed or QueueJobState.Failed,
+            QueueJobState.Running => next is QueueJobState.Queued or QueueJobState.Paused or QueueJobState.Completed or QueueJobState.Failed or QueueJobState.Cancelled,
             QueueJobState.Paused or QueueJobState.Failed => next is QueueJobState.Queued or QueueJobState.Cancelled,
             _ => false
         };

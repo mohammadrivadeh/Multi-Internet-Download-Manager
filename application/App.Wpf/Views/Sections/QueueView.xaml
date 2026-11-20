@@ -1,43 +1,117 @@
-<UserControl x:Class="DownloadManager.App.Views.Sections.QueueView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>            <StackPanel Margin="0,4,0,12"><TextBlock Text="{DynamicResource QueueLabel}" FontSize="20" FontWeight="SemiBold"/>
-                <WrapPanel Margin="0,8,0,0"><TextBlock Text="{DynamicResource JobCountLabel}"/><TextBlock Text="{Binding JobCount}" Margin="6,0,20,0"/><TextBlock Text="{DynamicResource CompletedCountLabel}"/><TextBlock Text="{Binding CompletedCount}" Margin="6,0,0,0"/></WrapPanel>
-            </StackPanel>
-            <DockPanel Grid.Row="1">
-                <ComboBox ItemsSource="{Binding Categories}" DisplayMemberPath="Name" SelectedValuePath="Key" SelectedValue="{Binding CategoryFilter}" DockPanel.Dock="Right" Width="150" Margin="10,6,0,12" AutomationProperties.Name="{DynamicResource CategoryLabel}"/>
-                <ComboBox SelectedValue="{Binding StateFilter}" SelectedValuePath="Tag" DockPanel.Dock="Right" Width="150" Margin="10,6,0,12">
+<UserControl x:Class="DownloadManager.App.Views.Sections.QueueView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <Style x:Key="QueueHeader" TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        </Style>
+        <Style x:Key="QueueCellText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="TextAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="8,0"/>
+            <Setter Property="FontFamily" Value="{DynamicResource App.FontFamily}"/>
+        </Style>
+    </UserControl.Resources>
+    <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <DockPanel Grid.Row="0">
+                <ComboBox SelectedValue="{Binding StateFilter}" SelectedValuePath="Tag" DockPanel.Dock="Right" Width="145" Margin="0,0,7,5" VerticalAlignment="Center"
+                          ToolTip="Filter by download status" AutomationProperties.Name="Download status">
                     <ComboBoxItem Content="{DynamicResource FilterAll}" Tag="All"/>
-                    <ComboBoxItem Content="{DynamicResource FilterActive}" Tag="Active"/>
+                    <ComboBoxItem Content="{DynamicResource QueueStateQueued}" Tag="Queued"/>
+                    <ComboBoxItem Content="{DynamicResource QueueStateRunning}" Tag="Running"/>
+                    <ComboBoxItem Content="{DynamicResource QueueStatePaused}" Tag="Paused"/>
                     <ComboBoxItem Content="{DynamicResource QueueStateCompleted}" Tag="Completed"/>
                     <ComboBoxItem Content="{DynamicResource QueueStateFailed}" Tag="Failed"/>
+                    <ComboBoxItem Content="{DynamicResource QueueStateCancelled}" Tag="Cancelled"/>
                 </ComboBox>
-                <TextBox Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource SearchLabel}"/>
+            <WrapPanel Margin="0,0,0,6" IsEnabled="{Binding IsReady}">
+                <WrapPanel.Resources>
+                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                        <Setter Property="Margin" Value="0,0,7,5"/>
+                        <Setter Property="MinWidth" Value="39"/>
+                    </Style>
+                    <Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+                        <Setter Property="Margin" Value="0,0,7,5"/>
+                    </Style>
+                </WrapPanel.Resources>
+                <Button Command="{Binding StartSelectedCommand}" ToolTip="Start download" AutomationProperties.Name="Start download"><TextBlock Text="&#xE768;" FontFamily="{DynamicResource App.IconFont}"/></Button>
+                <Button Command="{Binding PauseSelectedCommand}" ToolTip="Pause download" AutomationProperties.Name="Pause download"><TextBlock Text="&#xE769;" FontFamily="{DynamicResource App.IconFont}"/></Button>
+                <Button Command="{Binding ResumeSelectedCommand}" ToolTip="Resume download" AutomationProperties.Name="Resume download"><TextBlock Text="&#xE893;" FontFamily="{DynamicResource App.IconFont}"/></Button>
+                <Button Command="{Binding CancelSelectedCommand}" ToolTip="Stop or cancel download" AutomationProperties.Name="Stop or cancel download"><TextBlock Text="&#xE71A;" FontFamily="{DynamicResource App.IconFont}"/></Button>
+                <Button Command="{Binding RedownloadSelectedCommand}" ToolTip="Redownload from zero" AutomationProperties.Name="Redownload from zero"><TextBlock Text="&#xE72C;" FontFamily="{DynamicResource App.IconFont}"/></Button>
+                <Button Command="{Binding RetryQueueSaveCommand}" ToolTip="{DynamicResource RetryQueueSaveLabel}" AutomationProperties.Name="{DynamicResource RetryQueueSaveLabel}"><TextBlock Text="&#xE74E;" FontFamily="{DynamicResource App.IconFont}"/></Button>
+                <Button Command="{Binding ClearHistoryCommand}" ToolTip="{DynamicResource ClearHistoryLabel}" AutomationProperties.Name="{DynamicResource ClearHistoryLabel}"><TextBlock Text="&#xE74D;" FontFamily="{DynamicResource App.IconFont}"/></Button>
+                <Button x:Name="SelectionModeButton" Click="ToggleSelectionMode" Content="Select multiple"/>
+                <Button x:Name="MoveButton" Style="{StaticResource PrimaryButton}" Margin="0,0,7,5" Click="MoveDownloadsClick" Content="Move to queue" IsEnabled="False"/>
+                <Button x:Name="CategoryButton" Style="{StaticResource PrimaryButton}" Margin="0,0,7,5" Click="AssignCategoryClick" Content="Set category" IsEnabled="False"/>
+            </WrapPanel>
             </DockPanel>
-            <DataGrid ItemsSource="{Binding JobsView}" SelectedItem="{Binding SelectedJob}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" MinHeight="180" Grid.Row="2" SelectionMode="Single" EnableRowVirtualization="True" VirtualizingPanel.VirtualizationMode="Recycling" EnableColumnVirtualization="True" ScrollViewer.CanContentScroll="True" AutomationProperties.Name="{DynamicResource QueueLabel}">
+            <TextBlock x:Name="SelectionHint" Grid.Row="1" Margin="0,0,0,8" Text="Use Select multiple to check several downloads." TextWrapping="Wrap"/>
+            <DataGrid x:Name="DownloadsGrid" SelectionChanged="DownloadsSelectionChanged" ItemsSource="{Binding JobsView}" SelectedItem="{Binding SelectedJob}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" MinHeight="180" Grid.Row="2" SelectionMode="Single" EnableRowVirtualization="True" VirtualizingPanel.VirtualizationMode="Recycling" EnableColumnVirtualization="True" ScrollViewer.CanContentScroll="True" AutomationProperties.Name="{DynamicResource QueueLabel}" PreviewMouseRightButtonDown="SelectContextRow" ColumnHeaderStyle="{StaticResource QueueHeader}">
+                <DataGrid.ContextMenu>
+                    <ContextMenu Style="{StaticResource AppContextMenu}" DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                        <ContextMenu.Resources>
+                            <Style TargetType="MenuItem" BasedOn="{StaticResource AppContextMenuItem}"/>
+                            <Style TargetType="Separator" BasedOn="{StaticResource AppContextMenuSeparator}"/>
+                        </ContextMenu.Resources>
+                        <MenuItem Header="Start" Command="{Binding StartSelectedCommand}">
+                            <MenuItem.Icon><TextBlock Text="&#xE768;" FontFamily="{DynamicResource App.IconFont}"/></MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Pause" Command="{Binding PauseSelectedCommand}">
+                            <MenuItem.Icon><TextBlock Text="&#xE769;" FontFamily="{DynamicResource App.IconFont}"/></MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Resume" Command="{Binding ResumeSelectedCommand}">
+                            <MenuItem.Icon><TextBlock Text="&#xE893;" FontFamily="{DynamicResource App.IconFont}"/></MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Stop / cancel" Command="{Binding CancelSelectedCommand}">
+                            <MenuItem.Icon><TextBlock Text="&#xE71A;" FontFamily="{DynamicResource App.IconFont}"/></MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Redownload from zero…" Command="{Binding RedownloadSelectedCommand}">
+                            <MenuItem.Icon><TextBlock Text="&#xE72C;" FontFamily="{DynamicResource App.IconFont}"/></MenuItem.Icon>
+                        </MenuItem>
+                        <Separator/>
+                        <MenuItem Header="Properties…" Click="PropertiesClick">
+                            <MenuItem.Style>
+                                <Style TargetType="MenuItem" BasedOn="{StaticResource AppContextMenuItem}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedJob}" Value="{x:Null}">
+                                            <Setter Property="IsEnabled" Value="False"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </MenuItem.Style>
+                            <MenuItem.Icon><TextBlock Text="&#xE946;" FontFamily="{DynamicResource App.IconFont}"/></MenuItem.Icon>
+                        </MenuItem>
+                    </ContextMenu>
+                </DataGrid.ContextMenu>
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="{DynamicResource FileColumn}" Binding="{Binding Filename}" Width="*" MinWidth="160"/>
-                    <DataGridTextColumn Header="{DynamicResource CategoryLabel}" Binding="{Binding Category}" Width="110"/>
-                    <DataGridTextColumn Header="{DynamicResource StateColumn}" Binding="{Binding State}" Width="100"/>
-                    <DataGridTextColumn Header="{DynamicResource ProgressLabel}" Binding="{Binding Progress}" Width="140"/>
-                    <DataGridTextColumn Header="{DynamicResource SpeedLimitColumn}" Binding="{Binding RateLimit}" Width="100"/>
-                    <DataGridTextColumn Header="{DynamicResource PriorityColumn}" Binding="{Binding Priority}" Width="70"/>
-                    <DataGridTextColumn Header="{DynamicResource ScheduleColumn}" Binding="{Binding Schedule}" Width="180"/>
-                    <DataGridTextColumn Header="{DynamicResource FailureColumn}" Binding="{Binding Failure}" Width="220"/>
+                    <DataGridTemplateColumn x:Name="SelectionColumn" Visibility="Collapsed" Width="44" CanUserSort="False">
+                        <DataGridTemplateColumn.HeaderTemplate>
+                            <DataTemplate>
+                                <CheckBox Click="ToggleAllDownloads" IsChecked="{Binding Tag, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=OneWay}"
+                                          ToolTip="Select or clear all visible downloads" AutomationProperties.Name="Select all visible downloads"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.HeaderTemplate>
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <CheckBox HorizontalAlignment="Center" VerticalAlignment="Center"
+                                          IsChecked="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=DataGridRow}, Mode=TwoWay}"
+                                          AutomationProperties.Name="{Binding Filename, StringFormat='Select {0}'}"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="{DynamicResource FileColumn}" Binding="{Binding Filename}" Width="2.4*" MinWidth="155" ElementStyle="{StaticResource QueueCellText}"/>
+                    <DataGridTemplateColumn Header="{DynamicResource ProgressLabel}" Width="2*" MinWidth="150">
+                        <DataGridTemplateColumn.CellTemplate><DataTemplate><StackPanel VerticalAlignment="Center" Margin="12,4"><ProgressBar Value="{Binding ProgressPercent, Mode=OneWay}" Maximum="100" Height="7"/><TextBlock Text="{Binding ProgressDisplay}" TextAlignment="Center" FontSize="{DynamicResource App.Font.Small}" Foreground="{DynamicResource App.TextMuted}" Margin="0,4,0,0"/></StackPanel></DataTemplate></DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="{DynamicResource StateColumn}" Binding="{Binding State}" Width="*" MinWidth="95" ElementStyle="{StaticResource QueueCellText}"/>
+                    <DataGridTextColumn Header="{DynamicResource CategoryLabel}" Binding="{Binding Category}" Width="*" MinWidth="95" ElementStyle="{StaticResource QueueCellText}"/>
+                    <DataGridTextColumn Header="{DynamicResource SizeColumn}" Binding="{Binding SizeDisplay}" Width="*" MinWidth="82" ElementStyle="{StaticResource QueueCellText}"/>
                 </DataGrid.Columns>
             </DataGrid>
             <Border Grid.Row="2" Padding="24" IsHitTestVisible="False">
                 <Border.Style><Style TargetType="Border"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding HasVisibleJobs}" Value="False"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></Border.Style>
                 <TextBlock Text="{DynamicResource EmptyQueueLabel}" TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
-            <WrapPanel Grid.Row="3" IsEnabled="{Binding IsReady}">
-                <Button Content="{DynamicResource AssignCategoryLabel}" Command="{Binding AssignCategoryCommand}"/>
-                <Button Content="{DynamicResource ResumeSelectedLabel}" Command="{Binding ResumeSelectedCommand}"/>
-                <Button Content="{DynamicResource CancelSelectedLabel}" Command="{Binding CancelSelectedCommand}"/>
-                <Button Content="{DynamicResource RetryQueueSaveLabel}" Command="{Binding RetryQueueSaveCommand}"/>
-                <Button Content="{DynamicResource ClearHistoryLabel}" Command="{Binding ClearHistoryCommand}"/>
-            </WrapPanel>
-<Expander Grid.Row="4" Header="{DynamicResource SelectedDetailsLabel}" Margin="0,12,0,0"><StackPanel>
-    <TextBlock Text="{Binding SelectedJob.Filename}" FontWeight="SemiBold"/>
-    <TextBlock Text="{Binding SelectedJob.Destination}" TextWrapping="Wrap"/>
-    <TextBlock Text="{Binding SelectedJob.Origin}" TextWrapping="Wrap"/>
-    <TextBlock Text="{Binding SelectedJob.DailyWindow}"/>
-    <TextBlock Text="{Binding SelectedJob.Checksum}" TextWrapping="Wrap"/>
-</StackPanel></Expander></Grid></UserControl>
+        </Grid>
+</UserControl>

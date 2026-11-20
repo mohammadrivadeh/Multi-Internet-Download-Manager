@@ -37,7 +37,12 @@ public class QueueTests
             Assert.DoesNotContain("DO-NOT-PERSIST-CLEAR", Encoding.UTF8.GetString(bytes));
             using var reopened = new QueueStore(path, protector);
             Assert.Equal(job.Id, Assert.Single(reopened.Load()).Id);
+            var second = Job("two.bin") with { QueueName = "Custom queue" };
+            reopened.SaveMany([job with { QueueName = "Archive" }, second]);
+            Assert.Equal("Archive", reopened.Load().Single(j => j.Id == job.Id).QueueName);
+            Assert.Equal("Custom queue", reopened.Load().Single(j => j.Id == second.Id).QueueName);
             reopened.Remove(job.Id);
+            reopened.Remove(second.Id);
             Assert.Empty(reopened.Load());
         }
         finally { Directory.Delete(directory, true); }
@@ -64,6 +69,66 @@ public class QueueTests
         Assert.All(await queue.SnapshotAsync(), j => { Assert.Equal(QueueJobState.Completed, j.State); Assert.Equal(10, j.CompletedBytes); });
         await queue.ClearTerminalHistoryAsync();
         Assert.Empty(store.Jobs);
+    }
+
+    [Fact]
+    public async Task NamedQueuesRunIndependentlyAndHonorParallelDownloadLimit()
+    {
+        var store = new MemoryStore();
+        var active = 0; var maximum = 0;
+        var allStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var executor = new FakeExecutor(async (_, _, token) =>
+        {
+            var current = Interlocked.Increment(ref active);
+            int observed;
+            do { observed = maximum; if (current <= observed) break; }
+            while (Interlocked.CompareExchange(ref maximum, current, observed) != observed);
+            if (current >= 3) allStarted.TrySetResult();
+            await allStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+            await Task.Delay(5, token);
+            Interlocked.Decrement(ref active);
+        });
+        var queue = new QueueCoordinator(store, executor, new TestClock(Now));
+        await queue.InitializeAsync();
+        await queue.EnqueueAsync(Job("main.bin"));
+        await queue.EnqueueAsync(Job("custom-one.bin") with { QueueName = "Custom" });
+        await queue.EnqueueAsync(Job("custom-two.bin") with { QueueName = "Custom" });
+
+        await Task.WhenAll(queue.RunReadyAsync("Custom", 2), queue.RunReadyAsync("Main", 1));
+
+        Assert.Equal(3, maximum);
+        Assert.Equal(3, executor.Executed.Count);
+        Assert.All(await queue.SnapshotAsync(), item => Assert.Equal(QueueJobState.Completed, item.State));
+    }
+
+    [Fact]
+    public async Task DownloadsCanMoveAndRenameQueuesWithoutChangingOtherJobs()
+    {
+        var store = new MemoryStore();
+        var queue = new QueueCoordinator(store, new FakeExecutor((_, _, _) => Task.CompletedTask), new TestClock(Now));
+        await queue.InitializeAsync();
+        var custom = await queue.EnqueueAsync(Job("custom.bin") with { QueueName = "Work" });
+        var bulk = await queue.EnqueueAsync(Job("bulk.bin") with { QueueName = "Work" });
+        var main = await queue.EnqueueAsync(Job("main.bin"));
+
+        await queue.RenameQueueAsync("Work", "Archive");
+        Assert.Equal("Archive", store.Jobs[custom.Id].QueueName);
+        Assert.Equal(QueueJob.MainQueue, store.Jobs[main.Id].QueueName);
+        await queue.SetQueueNameAsync(custom.Id, QueueJob.MainQueue);
+        await queue.MoveQueueJobsAsync("Archive", QueueJob.MainQueue);
+        Assert.Equal(QueueJob.MainQueue, store.Jobs[bulk.Id].QueueName);
+        Assert.All(await queue.SnapshotAsync(), item => Assert.Equal(QueueJob.MainQueue, item.QueueName));
+    }
+
+    [Fact]
+    public void QueueSettingsSupportBoundedAllParallelismAndOvernightSchedules()
+    {
+        var settings = new DownloadQueueSettings { Name = "Night", MaxConcurrentDownloads = 0, StartTime = "22:00", StopTime = "06:00" };
+        settings.Validate();
+        Assert.True(settings.IsWithinSchedule(new DateTime(2026, 11, 14, 23, 0, 0)));
+        Assert.True(settings.IsWithinSchedule(new DateTime(2026, 11, 15, 5, 59, 0)));
+        Assert.False(settings.IsWithinSchedule(new DateTime(2026, 11, 15, 6, 0, 0)));
+        Assert.Throws<ArgumentException>(() => (settings with { StartTime = "22:00", StopTime = "" }).Validate());
     }
 
     [Fact]
@@ -118,11 +183,51 @@ public class QueueTests
         using var stop = new CancellationTokenSource();
         var run = queue.RunReadyAsync(token: stop.Token);
         await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => queue.SetQueueNameAsync(job.Id, "Other"));
         await Assert.ThrowsAsync<InvalidOperationException>(() => queue.RunReadyAsync());
-        await Assert.ThrowsAsync<InvalidOperationException>(() => queue.ChangeStateAsync(job.Id, QueueJobState.Cancelled));
         await Assert.ThrowsAsync<InvalidOperationException>(() => queue.SetCategoryAsync(job.Id, "Changed"));
         stop.Cancel(); await run;
         Assert.True(ended); Assert.Equal(QueueJobState.Paused, store.Jobs[job.Id].State);
+    }
+
+    [Theory]
+    [InlineData(QueueJobState.Paused)]
+    [InlineData(QueueJobState.Cancelled)]
+    public async Task StoppingSelectedDownloadDoesNotCancelSiblingWorker(QueueJobState target)
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var siblingStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var selected = Job("selected.bin");
+        var executor = new FakeExecutor(async (job, _, token) =>
+        {
+            if (job.Id == selected.Id)
+            {
+                started.TrySetResult();
+                try { await Task.Delay(Timeout.Infinite, token); }
+                finally { stopping.TrySetResult(); }
+            }
+            else
+            {
+                siblingStarted.TrySetResult();
+                await release.Task.WaitAsync(token);
+            }
+        });
+        var queue = new QueueCoordinator(new MemoryStore(), executor, new TestClock(Now));
+        await queue.InitializeAsync();
+        await queue.EnqueueAsync(selected);
+        var sibling = await queue.EnqueueAsync(Job("sibling.bin"));
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var running = queue.RunReadyAsync(QueueJob.MainQueue, 2, token: deadline.Token);
+        await Task.WhenAll(started.Task, siblingStarted.Task).WaitAsync(deadline.Token);
+        await queue.ChangeStateAsync(selected.Id, target, deadline.Token);
+        await stopping.Task.WaitAsync(deadline.Token);
+        release.TrySetResult();
+        await running;
+        var jobs = (await queue.SnapshotAsync()).ToDictionary(job => job.Id);
+        Assert.Equal(target, jobs[selected.Id].State);
+        Assert.Equal(QueueJobState.Completed, jobs[sibling.Id].State);
     }
 
     [Fact]
@@ -291,10 +396,20 @@ public class QueueTests
             var filename = Path.Combine(directory, "preferences.bin");
             var store = new PreferencesStore(filename, protector);
             Assert.Equal(4, store.Load().Workers);
-            store.Save(new DesktopPreferences { Workers = 16, SpeedLimitKiB = 128, Priority = 2, Category = " PrivateCategory ", DestinationRoot = directory });
+            Assert.Equal(QueueJob.MainQueue, Assert.Single(store.Load().Queues).Name);
+            store.Save(new DesktopPreferences { Workers = 16, SpeedLimitKiB = 128, Priority = 2, Category = " PrivateCategory ", DestinationRoot = directory,
+                Queues = [new DownloadQueueSettings(), new DownloadQueueSettings { Name = "Night shift", MaxConcurrentDownloads = 3, StartTime = "22:00", StopTime = "06:00" }] });
             var saved = store.Load();
             Assert.Equal(directory, saved.DestinationRoot);
             Assert.Equal(16, saved.Workers); Assert.Equal(128, saved.SpeedLimitKiB); Assert.Equal("PrivateCategory", saved.Category);
+            Assert.Equal(2, saved.Queues.Count); Assert.Equal("Night shift", saved.Queues[1].Name); Assert.Equal(3, saved.Queues[1].MaxConcurrentDownloads);
+            Assert.Equal(16, saved.DefaultsFor("PrivateCategory").Workers);
+            Assert.Equal(4, saved.DefaultsFor("General").Workers);
+            store.Save(saved with { CategoryDefaults = [new("PrivateCategory", 8, 3, directory), new("General", 2, -1)] });
+            var withCategoryDefaults = store.Load();
+            Assert.Equal(new CategoryDownloadSettings("PrivateCategory", 8, 3, directory), withCategoryDefaults.DefaultsFor("privatecategory"));
+            Assert.Equal(new CategoryDownloadSettings("General", 2, -1), withCategoryDefaults.DefaultsFor("General"));
+            Assert.Equal(saved.Queues, withCategoryDefaults.Queues);
             var original = File.ReadAllBytes(filename);
             Assert.DoesNotContain("PrivateCategory", Encoding.UTF8.GetString(original));
             Assert.Throws<InvalidOperationException>(() => new PreferencesStore(filename, new FailingProtector()).Save(new()));
@@ -387,9 +502,10 @@ public class QueueTests
     }
     private sealed class FakeExecutor(Func<QueueJob, IProgress<DownloadProgress>?, CancellationToken, Task> execute) : IQueuedDownloadExecutor
     {
+        private readonly object sync = new();
         public List<Guid> Executed { get; } = [];
         public async Task ExecuteAsync(QueueJob job, IProgress<DownloadProgress>? progress, CancellationToken token)
-        { Executed.Add(job.Id); await execute(job, progress, token); }
+        { lock (sync) Executed.Add(job.Id); await execute(job, progress, token); }
     }
     private sealed class TestClock(DateTimeOffset now) : TimeProvider
     { public DateTimeOffset Now { get; set; } = now; public override DateTimeOffset GetUtcNow() => Now; }

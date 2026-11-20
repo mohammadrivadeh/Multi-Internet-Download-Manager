@@ -5,6 +5,7 @@ namespace DownloadManager.Infrastructure.Persistence;
 
 public sealed class PreferencesStore(string filename, IQueuePayloadProtector protector)
 {
+    private const int MaxFileBytes = 65536;
     private sealed record Envelope
     {
         public required string Kind { get; init; }
@@ -14,7 +15,7 @@ public sealed class PreferencesStore(string filename, IQueuePayloadProtector pro
     public DesktopPreferences Load()
     {
         if (!File.Exists(filename)) return new();
-        if (new FileInfo(filename).Length > 65536) throw new InvalidDataException("Preferences exceed their size limit.");
+        if (new FileInfo(filename).Length > MaxFileBytes) throw new InvalidDataException("Preferences exceed their size limit.");
         var clear = protector.Unprotect(File.ReadAllBytes(filename));
         try
         {
@@ -32,6 +33,7 @@ public sealed class PreferencesStore(string filename, IQueuePayloadProtector pro
         byte[] encrypted;
         try { encrypted = protector.Protect(clear); }
         finally { CryptographicOperations.ZeroMemory(clear); }
+        if (encrypted.Length > MaxFileBytes) throw new InvalidDataException("Preferences exceed their size limit.");
         var target = Path.GetFullPath(filename);
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         var temporary = target + "." + Guid.NewGuid().ToString("N") + ".tmp";

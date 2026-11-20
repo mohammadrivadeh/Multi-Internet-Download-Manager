@@ -5,6 +5,7 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio"><PrivateAssets>all</PrivateAssets></PackageReference>
     <ProjectReference Include="../../application/Core/Core.csproj" />
+    <ProjectReference Include="../../application/NetworkBalancer/NetworkBalancer.csproj" />
     <Using Include="Xunit" />
   </ItemGroup>
 </Project>

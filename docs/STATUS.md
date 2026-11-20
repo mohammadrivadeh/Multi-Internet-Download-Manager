@@ -1,8 +1,44 @@
 # Development status
 
+## Windows balancer pivot
+
+Updated 2026-11-20. [ADR 0018](decisions/0018-windows-network-balancer.md) records the migration from segmented downloads to system-wide per-flow balancing.
+
+- Added a standalone flow scheduler with IPv4 and IPv6 reservations, weighted assignment, health filtering, and concurrent reservation tests.
+- Added a pinned Windows x64 source build for the upstream Go engine and a read-only adapter diagnostics executable. WPF opens on Network Balancer and uses the helper's JSON inventory when packaged. Existing downloader and queue workflows are accessible from the shell.
+- The .NET solution builds without warnings or errors and all 54 core tests passed. The pinned Go suite passed on Windows, the upstream CLI reported the pinned revision, and the .NET bridge successfully read six adapter records from the packaged helper. The Wintun archive checksum and DLL signature were verified without installing the driver. Service integration, rollback hardening, and multi-uplink capture acceptance remain open. No live routes were changed.
+
+### Desktop capture preview
+
+- Added opt-in WPF Start and Stop and a separately packaged elevated Go host. The host uses the pinned upstream TUN and relay, verifies its desktop peer over a restricted named pipe, and requests cleanup on Stop or pipe loss. The desktop reports readiness, confirmed stop, and errors. Normal app builds still ship read-only diagnostics.
+- The preview uses a dedicated Wintun adapter and avoids physical adapter setting changes. It refuses incompatible strong-host settings and a surviving capture adapter.
+- Verified the normal solution build and the packaged capture preview, both with zero warnings or errors. All 55 core tests, 3 presentation tests, the upstream Go suite on rerun, and two capture-host tests passed. The initial upstream run encountered a loopback SOCKS5 connection reset in `TestUDPAssociateRefusedCleanly`. The preview was built without starting the elevated host or changing live routes.
+
+### Capture route recovery
+
+- Replaced the desktop host's split-default route commands with Windows IP Helper calls. Each intent is flushed to a protected machine registry journal before route creation. Start and teardown reconcile journaled entries through the dedicated adapter's stable GUID and verify route ownership before removal. Conflicts and uncertain cleanup preserve the journal and block new capture.
+- The Windows Go tests passed, including 32 simulated interruptions across the four routes and ownership, ACL, and native route layout checks. An earlier upstream run hit the known loopback SOCKS5 reset and passed on rerun. Both .NET builds passed without warnings or errors, all 55 core and 3 presentation tests passed, and the packaged preview host matched the rebuilt binary.
+- Recovery is triggered by normal teardown or the next authorized Start. Actual route creation, registry persistence through forced host termination or reboot, and network restoration still require isolated Windows VM acceptance. Capture remains opt-in. No live routes were changed.
+
+### Downloads and adapter selection redesign
+
+- Network Balancer owns adapter selection. The capture preview passes the chosen adapters to the elevated host, which checks them against current eligible adapters before starting and monitors them during capture. New downloads use Windows system routing with no application speed cap.
+- Downloads has modal New download and queue-name editors, a toolbar, and a theme-aware row context menu and tooltips. The centered grid shows file, progress, status, category, and size. Destination, origin, checksum, and scheduling details are in Properties. Row pause and cancellation use a per-job token so sibling downloads can continue. Redownload from zero requires a fresh destination and preserves the existing file and partial download.
+- Each category and queue has an independent settings dialog in the sidebar. Category defaults set the request count, priority, and base folder for new downloads. Queue dialogs manage concurrency and schedule. Older saved defaults apply to their original category, while individual queue settings keep their stored values.
+- The New Download dialog proposes a destination from the URL and category, preserves manual edits, and defaults to Main without changing which queue is selected in the sidebar.
+- The Downloads toolbar filters by download status. Select multiple reveals per-row checkboxes and a checkbox for all visible downloads. Separate dialogs let users choose a destination queue or category for the selected rows.
+
+## Downloader
+
 Updated 2026-11-14. The user authorized merging to main and continuing without waiting for their Windows test results. All outstanding acceptance is recorded in [PENDING-ACCEPTANCE.md](testing/PENDING-ACCEPTANCE.md); it does not block independent implementation.
 
 ## Implemented
+
+- WPF visual refresh: Moonlight Glow shell and shared dynamic palette resources, with six palettes included. Runtime palette selection and live Windows visual acceptance are not implemented.
+- WPF shell: custom borderless title bar with Segoe Fluent glyphs and clickable Downloads, Queue, Connections, and Preferences navigation. Connections use wrapping adapter cards. Preferences use paired saved-default fields. Downloads centers the queue, provides a collapsed New download editor, and shows a compact progress/speed/remaining strip. Queue row/cell colors use global palette resources. Release WPF build succeeds with zero warnings/errors. Live resize, title-bar hit testing, DPI, keyboard accessibility, and rendered contrast remain pending Windows acceptance.
+- New download workflow: adapter selection and per-connection caps moved to Connections. Destination defaults to the Windows Downloads directory; if that directory remains selected, the URL path supplies a suggested filename. The primary OK action enqueues and starts processing. Release WPF build succeeds with zero warnings/errors.
+- IDM-inspired list update: Downloads now shows category choices and queues in the left rail, and a labeled icon toolbar for New download, Start queue, and Pause. The central list includes size and an in-row progress bar with decimal KB/MB/GB values; the cap column is labeled KB/s. The progress bar uses an explicit one-way binding for its read-only row percentage. Per-category icons and Windows visual/accessibility acceptance remain open.
+- Custom queues: Queue names and settings are stored in the protected preferences file; queue names are also stored with each encrypted download. Older queue records without a queue name default to Main. Users can create, rename, delete queues (deleting moves their downloads to Main), choose a queue for new downloads, and move selected jobs between queues. Each queue has an independent start/stop runner and runs 1–32 downloads in parallel, or All pending downloads capped at 32. Daily local-time start/stop windows support overnight ranges; a scheduled stop pauses active jobs and requeues only those interrupted by that schedule for the next start. Queue schedule automation requires the app to stay open and that queue to be started. Current tests cover parallel runners, independent queues, moves, renames, protected persistence and overnight schedules.
 
 - Three production projects: Core, Infrastructure and App.Wpf; pinned .NET 10 SDK, nullable checks, warnings as errors and central NuGet versions.
 - Immutable 64-bit intervals, a lazy serialized range allocator, bounded 1–128 workers and per-worker adaptive range sizing.
@@ -27,6 +63,7 @@ Updated 2026-11-14. The user authorized merging to main and continuing without w
 - Windows x64 WPF portable build cross-published successfully. Requires .NET 10 Desktop Runtime x64. Not executed on Windows.
 - NuGet auditing remained enabled. Initial SQLite 10.0.0 graph was rejected due to a vulnerable native transitive dependency; serviced Microsoft.Data.Sqlite 10.0.15 restored and built successfully.
 - CI configuration is saved; no remote workflow result is claimed without checking GitHub.
+- Queue feature validation: Release WPF build succeeded with zero warnings/errors. The focused queue/persistence checks passed (5/5); Core tests passed (50/50), Integration tests passed (91/91 when excluding the Windows DPAPI profile test), and Presentation tests passed (3/3). Running the complete Integration suite on this machine failed only at the existing DPAPI profile-protection test because this Windows session could not complete its user-profile protection call. Windows desktop visual acceptance remains pending.
 
 ## Phase and feature matrix
 

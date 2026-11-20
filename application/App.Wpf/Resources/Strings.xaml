@@ -1,8 +1,52 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:sys="clr-namespace:System;assembly=System.Runtime">
     <sys:String x:Key="ProgressLabel">Download progress</sys:String>
-    <sys:String x:Key="AppTitle">Multi-Internet Download Manager</sys:String>
+    <sys:String x:Key="AppTitle">Multi-Internet Network Balancer</sys:String>
+    <sys:String x:Key="BalancerNavLabel">Network Balancer</sys:String>
+    <sys:String x:Key="DownloadsNavLabel">Downloads</sys:String>
+    <sys:String x:Key="CategoriesHeading">Categories</sys:String>
+    <sys:String x:Key="QueuesHeading">Queues</sys:String>
+    <sys:String x:Key="MainQueueLabel">Main queue</sys:String>
+    <sys:String x:Key="SizeColumn">Size</sys:String>
+    <sys:String x:Key="TransferRateColumn">Limit KB/s</sys:String>
+    <sys:String x:Key="QueueNamePlaceholder">Queue name</sys:String>
+    <sys:String x:Key="CreateQueueLabel">Create queue</sys:String>
+    <sys:String x:Key="RenameQueueLabel">Rename selected queue</sys:String>
+    <sys:String x:Key="DeleteQueueLabel">Delete queue and move downloads to Main</sys:String>
+    <sys:String x:Key="QueueSettingsHeading">Queue settings</sys:String>
+    <sys:String x:Key="QueueConcurrencyLabel">Parallel downloads (1–32, or All; All is capped at 32)</sys:String>
+    <sys:String x:Key="QueueStartTimeLabel">Daily start time (HH:mm)</sys:String>
+    <sys:String x:Key="QueueStopTimeLabel">Daily stop time (HH:mm)</sys:String>
+    <sys:String x:Key="QueueScheduleHint">Use local time. Leave both times blank to run whenever started. Overnight windows are supported.</sys:String>
+    <sys:String x:Key="SaveQueueSettingsLabel">Save queue settings</sys:String>
+    <sys:String x:Key="QueueAssignmentLabel">Add to queue</sys:String>
+    <sys:String x:Key="MoveDownloadQueueLabel">Move selected download to</sys:String>
+    <sys:String x:Key="QueueCreatedStatus">Created queue: {0}</sys:String>
+    <sys:String x:Key="QueueRenamedStatus">Renamed queue to: {0}</sys:String>
+    <sys:String x:Key="QueueDeletedStatus">Deleted {0}; its downloads were moved to Main.</sys:String>
+    <sys:String x:Key="QueueNameExistsStatus">A queue with that name already exists.</sys:String>
+    <sys:String x:Key="QueueNameInputError">Enter a queue name with 1 to 48 printable characters.</sys:String>
+    <sys:String x:Key="MainQueueRenameStatus">The Main queue cannot be renamed.</sys:String>
+    <sys:String x:Key="MainQueueDeleteStatus">The Main queue cannot be deleted.</sys:String>
+    <sys:String x:Key="StopQueueBeforeManageStatus">Stop this queue before managing it.</sys:String>
+    <sys:String x:Key="QueueSettingsSavedStatus">Queue settings saved.</sys:String>
+    <sys:String x:Key="QueueSettingsInputError">Use 1–32 or All parallel downloads and valid, different 24-hour HH:mm schedule times. Enter both times or leave both blank.</sys:String>
+    <sys:String x:Key="QueueManageErrorStatus">The queue change could not be saved. Existing downloads were preserved.</sys:String>
+    <sys:String x:Key="StopQueueBeforeMoveStatus">Stop the download's queue before moving a running item.</sys:String>
+    <sys:String x:Key="DownloadMovedStatus">Download moved to the selected queue.</sys:String>
+    <sys:String x:Key="PreparingQueueStatus">Starting queue: {0}</sys:String>
+    <sys:String x:Key="QueueWaitingNamedStatus">Queue {0} has no ready downloads.</sys:String>
+    <sys:String x:Key="QueuePausedStatus">Queue {0} stopped. Active downloads are paused.</sys:String>
+    <sys:String x:Key="QueueScheduledStatus">Queue starts at {0} and stops at {1} local time.</sys:String>
+    <sys:String x:Key="PreferencesLabel">Preferences</sys:String>
+    <sys:String x:Key="AdvancedOptionsLabel">Advanced options</sys:String>
+    <sys:String x:Key="NewDownloadSectionLabel">New download</sys:String>
+    <sys:String x:Key="DefaultsSectionLabel">Default settings for new downloads</sys:String>
+    <sys:String x:Key="OkLabel">OK</sys:String>
+    <sys:String x:Key="MinimizeLabel">Minimize window</sys:String>
+    <sys:String x:Key="MaximizeLabel">Maximize or restore window</sys:String>
+    <sys:String x:Key="CloseLabel">Close window</sys:String>
     <sys:String x:Key="Subtitle">Download with your selected connections</sys:String>
-    <sys:String x:Key="UrlLabel">Download URL (HTTP or HTTPS)</sys:String>
+    <sys:String x:Key="UrlLabel">Download URL</sys:String>
     <sys:String x:Key="DestinationLabel">Destination file</sys:String>
     <sys:String x:Key="BrowseLabel">Browse…</sys:String>
     <sys:String x:Key="ConnectionsLabel">Connections</sys:String>
@@ -20,7 +64,7 @@
     <sys:String x:Key="AccessStatus">The server refused access. The link may have expired or require authentication, which this version does not support.</sys:String>
     <sys:String x:Key="ServerPressureStatus">The server is limiting requests. Wait before resuming, or reduce the request count.</sys:String>
     <sys:String x:Key="ValidationStatus">The response, saved state or checksum could not be validated. Preserve the partial files and choose another destination if the resource changed.</sys:String>
-    <sys:String x:Key="ReadyStatus">Ready. Select your connections or explicitly choose the system route.</sys:String>
+    <sys:String x:Key="ReadyStatus">Ready</sys:String>
     <sys:String x:Key="PreparingStatus">Preparing download…</sys:String>
     <sys:String x:Key="PausedStatus">Stopped. Validated range checkpoints are kept; sequential downloads restart.</sys:String>
     <sys:String x:Key="FailureStatus">Download stopped. Check the URL, selected connections, destination access and available disk space. Validated checkpoints are kept.</sys:String>
@@ -37,7 +81,7 @@
     <sys:String x:Key="PauseQueueLabel">Stop queue / Pause active</sys:String>
     <sys:String x:Key="QueueLabel">Queue and history</sys:String>
     <sys:String x:Key="SearchLabel">Search filenames</sys:String>
-    <sys:String x:Key="FilterAll">All jobs</sys:String>
+    <sys:String x:Key="FilterAll">All statuses</sys:String>
     <sys:String x:Key="FilterActive">Active and pending</sys:String>
     <sys:String x:Key="QueueStateQueued">Queued</sys:String>
     <sys:String x:Key="QueueStateRunning">Running</sys:String>
@@ -66,8 +110,8 @@
     <sys:String x:Key="QueueFailureStorage">Check destination access and disk space</sys:String>
     <sys:String x:Key="QueueFailureTimeout">Response timed out</sys:String>
     <sys:String x:Key="QueueFailureFailure">Review connections and job settings</sys:String>
-    <sys:String x:Key="SpeedLimitLabel">Download speed limit (KiB/s; 0 = unlimited)</sys:String>
-    <sys:String x:Key="SpeedLimitColumn">Limit KiB/s</sys:String>
+    <sys:String x:Key="SpeedLimitLabel">Download speed limit (KB/s; 0 = unlimited)</sys:String>
+    <sys:String x:Key="SpeedLimitColumn">Limit KB/s</sys:String>
     <sys:String x:Key="UnlimitedLabel">Unlimited</sys:String>
     <sys:String x:Key="CategoryLabel">Category</sys:String>
     <sys:String x:Key="AllCategoriesLabel">All categories</sys:String>
@@ -87,7 +131,7 @@
     <sys:String x:Key="WindowStartLabel">Window start (HH:mm)</sys:String>
     <sys:String x:Key="WindowEndLabel">Window end (HH:mm)</sys:String>
     <sys:String x:Key="WindowOffsetLabel">Fixed UTC offset (+03:30, for example)</sys:String>
-<sys:String x:Key="PathSpeedLimitLabel">Connection cap for this job (KiB/s; 0 unlimited)</sys:String>
+<sys:String x:Key="PathSpeedLimitLabel">Connection cap for this job (KB/s; 0 unlimited)</sys:String>
     <sys:String x:Key="DestinationRulesLabel">Destination folder rules</sys:String>
     <sys:String x:Key="DestinationRootLabel">Base download folder</sys:String>
     <sys:String x:Key="ChooseRootLabel">Choose base folder</sys:String>
@@ -95,6 +139,6 @@
     <sys:String x:Key="DestinationRuleError">Choose an existing base folder and a category/URL filename valid on Windows, or choose a destination manually. Linked folders are unsupported by automatic rules.</sys:String>
     <sys:String x:Key="JobCountLabel">Jobs:</sys:String>
     <sys:String x:Key="CompletedCountLabel">Completed:</sys:String>
-    <sys:String x:Key="EmptyQueueLabel">No matching downloads. Add a URL on the left or adjust the filters.</sys:String>
+    <sys:String x:Key="EmptyQueueLabel">Your download list is empty. Add a download to get started.</sys:String>
     <sys:String x:Key="ResizePanelsLabel">Resize download form and queue panels</sys:String>
 </ResourceDictionary>

@@ -1,11 +1,176 @@
-<Window x:Class="DownloadManager.App.Views.Shell.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:sections="clr-namespace:DownloadManager.App.Views.Sections" Title="{DynamicResource AppTitle}" Width="1200" Height="820" MinWidth="960" MinHeight="640" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}">
-    <Grid Margin="24">
-        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-        <Grid.ColumnDefinitions><ColumnDefinition Width="350" MinWidth="300" MaxWidth="480"/><ColumnDefinition Width="20"/><ColumnDefinition Width="*" MinWidth="360"/></Grid.ColumnDefinitions>
-        <StackPanel Grid.ColumnSpan="3" Margin="0,0,0,20"><TextBlock Text="{DynamicResource AppTitle}" FontSize="26" FontWeight="SemiBold"/><TextBlock Text="{DynamicResource Subtitle}" Margin="0,8,0,0"/></StackPanel>
-        <Border Grid.Row="1" Style="{StaticResource PanelCard}"><sections:NewDownloadView/></Border>
-        <GridSplitter Grid.Row="1" Grid.Column="1" Width="6" HorizontalAlignment="Center" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" AutomationProperties.Name="{DynamicResource ResizePanelsLabel}"/>
-        <Border Grid.Row="1" Grid.Column="2" Style="{StaticResource PanelCard}" Padding="16"><sections:QueueView/></Border>
-        <sections:TransferStatusView Grid.Row="2" Grid.ColumnSpan="3" Margin="0,12,0,0"/>
-    </Grid>
+<Window x:Class="DownloadManager.App.Views.Shell.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sections="clr-namespace:DownloadManager.App.Views.Sections"
+        xmlns:presentation="clr-namespace:DownloadManager.App.Presentation"
+        Title="{DynamicResource AppTitle}" Width="1440" Height="900" MinWidth="1100" MinHeight="720"
+        WindowStyle="None" ResizeMode="CanResize" Background="{DynamicResource App.Background}"
+        Foreground="{DynamicResource App.Text}" FontFamily="{DynamicResource App.FontFamily}">
+    <Window.Resources>
+        <presentation:QueueStatusConverter x:Key="QueueStatusConverter"/>
+        <Style x:Key="SidebarIconButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Width" Value="34"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="MinHeight" Value="34"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="6,0,0,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </Window.Resources>
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0" GlassFrameThickness="0" ResizeBorderThickness="6"
+                      UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+    <Border BorderBrush="{DynamicResource App.Border}" BorderThickness="1" CornerRadius="10" Background="{DynamicResource App.Background}">
+        <Grid ClipToBounds="True">
+            <Grid.RowDefinitions><RowDefinition Height="38"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <Border Grid.Row="0" Background="{DynamicResource App.SurfaceAlt}" BorderBrush="{DynamicResource App.BorderSubtle}" BorderThickness="0,0,0,1" MouseLeftButtonDown="TitleBarMouseLeftButtonDown">
+                <DockPanel LastChildFill="True">
+                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0">
+                        <TextBlock Text="&#xE896;" FontFamily="{DynamicResource App.IconFont}" Foreground="{DynamicResource App.Accent}" Margin="0,0,8,0"/>
+                        <TextBlock Text="{DynamicResource AppTitle}" FontSize="{DynamicResource App.Font.Small}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button Width="46" Height="36" Margin="0" Padding="0" Background="Transparent" BorderThickness="0" Click="MinimizeClick" AutomationProperties.Name="{DynamicResource MinimizeLabel}">
+                            <TextBlock Text="&#xE921;" FontFamily="{DynamicResource App.IconFont}" HorizontalAlignment="Center"/>
+                        </Button>
+                        <Button x:Name="MaximizeButton" Width="46" Height="36" Margin="0" Padding="0" Background="Transparent" BorderThickness="0" Click="MaximizeClick" AutomationProperties.Name="{DynamicResource MaximizeLabel}">
+                            <TextBlock x:Name="MaximizeGlyph" Text="&#xE922;" FontFamily="{DynamicResource App.IconFont}" HorizontalAlignment="Center"/>
+                        </Button>
+                        <Button Width="46" Height="36" Margin="0" Padding="0" Background="Transparent" BorderThickness="0" Click="CloseClick" AutomationProperties.Name="{DynamicResource CloseLabel}">
+                            <TextBlock Text="&#xE8BB;" FontFamily="{DynamicResource App.IconFont}" HorizontalAlignment="Center"/>
+                        </Button>
+                    </StackPanel>
+                    <TextBlock Text="{DynamicResource AppTitle}" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource App.TextMuted}" FontSize="{DynamicResource App.Font.Small}"/>
+                </DockPanel>
+            </Border>
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="378" MinWidth="240"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Border Grid.Column="0" Background="{DynamicResource App.SurfaceAlt}" BorderBrush="{DynamicResource App.Border}" BorderThickness="0,0,1,0">
+                    <DockPanel Margin="14,22">
+                    <StackPanel DockPanel.Dock="Top" Margin="6,2,6,28">
+                            <TextBlock Text="&#xE896;" FontFamily="{DynamicResource App.IconFont}" Foreground="{DynamicResource App.Accent}" FontSize="28"/>
+                            <TextBlock Text="{DynamicResource AppTitle}" FontSize="{DynamicResource App.Font.Title}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                        </StackPanel>
+                        <StackPanel>
+                            <Button Style="{StaticResource NavigationButton}" FontSize="16" Click="DownloadsClick" AutomationProperties.Name="{DynamicResource DownloadsNavLabel}" Background="{Binding IsDownloadsPage, Converter={StaticResource SelectedNavigationBrushConverter}}">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE896;" FontFamily="{DynamicResource App.IconFont}" FontSize="18" Width="28"/><TextBlock Text="{DynamicResource DownloadsNavLabel}"/></StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource NavigationButton}" FontSize="16" Click="BalancerClick" AutomationProperties.Name="{DynamicResource BalancerNavLabel}" Background="{Binding IsBalancerPage, Converter={StaticResource SelectedNavigationBrushConverter}}">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE968;" FontFamily="{DynamicResource App.IconFont}" FontSize="18" Width="28"/><TextBlock Text="{DynamicResource BalancerNavLabel}"/></StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource NavigationButton}" FontSize="16" Click="PreferencesClick" AutomationProperties.Name="{DynamicResource PreferencesLabel}" Background="{Binding IsPreferencesPage, Converter={StaticResource SelectedNavigationBrushConverter}}">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE713;" FontFamily="{DynamicResource App.IconFont}" FontSize="18" Width="28"/><TextBlock Text="{DynamicResource PreferencesLabel}"/></StackPanel>
+                            </Button>
+                            <Border Height="1" Background="{DynamicResource App.Border}" Margin="4,16,4,10"/>
+                            <TextBlock Text="{DynamicResource CategoriesHeading}" Foreground="{DynamicResource App.TextMuted}" Margin="14,6,0,6" FontSize="{DynamicResource App.Font.Small}"/>
+                            <ListBox ItemsSource="{Binding Categories}" SelectedValuePath="Key" SelectedValue="{Binding CategoryFilter, Mode=TwoWay}" SelectionChanged="CategorySelectionChanged" MinHeight="78" MaxHeight="160" AutomationProperties.Name="{DynamicResource CategoriesHeading}">
+                                <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}"><Setter Property="MinHeight" Value="34"/><Setter Property="Padding" Value="8,2"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="VerticalContentAlignment" Value="Center"/></Style></ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel>
+                                            <Button DockPanel.Dock="Right" Click="CategorySettingsClick"
+                                                    ToolTip="Category settings" AutomationProperties.Name="Category settings">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource SidebarIconButton}">
+                                                        <Style.Triggers><DataTrigger Binding="{Binding Key}" Value=""><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                                <TextBlock Text="&#xE713;" FontFamily="{DynamicResource App.IconFont}"/>
+                                            </Button>
+                                            <TextBlock Text="{Binding Name}" FontSize="15" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <Border Height="1" Background="{DynamicResource App.Border}" Margin="4,12,4,8"/>
+                            <DockPanel Margin="14,0,0,4">
+                                <Button DockPanel.Dock="Right" Click="CreateQueueClick" ToolTip="{DynamicResource CreateQueueLabel}"
+                                        AutomationProperties.Name="{DynamicResource CreateQueueLabel}" IsEnabled="{Binding IsReady}">
+                                    <TextBlock Text="&#xE710;" FontFamily="{DynamicResource App.IconFont}"/>
+                                </Button>
+                                <TextBlock Text="{DynamicResource QueuesHeading}" Foreground="{DynamicResource App.TextMuted}" VerticalAlignment="Center"/>
+                            </DockPanel>
+                            <ListBox ItemsSource="{Binding Queues}" SelectedValuePath="Name" SelectedValue="{Binding SelectedQueueName, Mode=TwoWay}" SelectionChanged="QueueSelectionChanged" MinHeight="78" MaxHeight="160" AutomationProperties.Name="{DynamicResource QueuesHeading}">
+                                <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}"><Setter Property="MinHeight" Value="34"/><Setter Property="Padding" Value="8,2"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="VerticalContentAlignment" Value="Center"/></Style></ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel>
+                                            <Button DockPanel.Dock="Right" Click="PauseQueueClick" Style="{StaticResource SidebarIconButton}"
+                                                    ToolTip="Stop queue and pause active downloads" AutomationProperties.Name="Stop queue and pause active downloads">
+                                                <TextBlock Text="&#xE769;" FontFamily="{DynamicResource App.IconFont}" FontSize="15"/>
+                                            </Button>
+                                            <Button DockPanel.Dock="Right" Click="StartQueueClick" Style="{StaticResource SidebarIconButton}"
+                                                    ToolTip="Start queue" AutomationProperties.Name="Start queue">
+                                                <TextBlock Text="&#xE768;" FontFamily="{DynamicResource App.IconFont}" FontSize="15"/>
+                                            </Button>
+                                            <Button DockPanel.Dock="Right" Click="QueueSettingsClick" Style="{StaticResource SidebarIconButton}"
+                                                    ToolTip="Queue settings" AutomationProperties.Name="Queue settings">
+                                                <TextBlock Text="&#xE713;" FontFamily="{DynamicResource App.IconFont}"/>
+                                            </Button>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,4,0">
+                                                <TextBlock Text="{Binding Name}" FontSize="15"/>
+                                                <TextBlock FontSize="12">
+                                                    <TextBlock.Tag>
+                                                        <MultiBinding Converter="{StaticResource QueueStatusConverter}">
+                                                            <Binding Path="Name"/>
+                                                            <Binding Path="DataContext.QueueStatuses" RelativeSource="{RelativeSource AncestorType=ListBox}"/>
+                                                        </MultiBinding>
+                                                    </TextBlock.Tag>
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                                            <Setter Property="Text" Value="● Idle"/>
+                                                            <Setter Property="Foreground" Value="#79AEFF"/>
+                                                            <Setter Property="ToolTip" Value="No active downloads in this queue."/>
+                                                            <Style.Triggers>
+                                                                <Trigger Property="Tag" Value="Running">
+                                                                    <Setter Property="Text" Value="● Running"/>
+                                                                    <Setter Property="Foreground" Value="#49D89F"/>
+                                                                    <Setter Property="ToolTip" Value="This queue is downloading."/>
+                                                                </Trigger>
+                                                                <Trigger Property="Tag" Value="Paused">
+                                                                    <Setter Property="Text" Value="● Paused"/>
+                                                                    <Setter Property="Foreground" Value="#FFB56B"/>
+                                                                    <Setter Property="ToolTip" Value="This queue is paused."/>
+                                                                </Trigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </StackPanel>
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+                <Grid Grid.Column="1" Margin="28,22,28,20">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <Grid Margin="0,0,0,18">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="{Binding CurrentPage}" FontSize="{DynamicResource App.Font.Hero}" FontWeight="SemiBold"/>
+                            <TextBlock Text="{DynamicResource Subtitle}" Foreground="{DynamicResource App.TextMuted}" Margin="0,4,0,0" Visibility="{Binding IsDownloadsPage, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                        </StackPanel>
+                        <WrapPanel Grid.Column="1" VerticalAlignment="Center"
+                                   Visibility="{Binding IsDownloadsPage, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <Button Click="NewDownloadClick" IsEnabled="{Binding IsReady}" Style="{StaticResource PrimaryButton}" AutomationProperties.Name="{DynamicResource NewDownloadSectionLabel}"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE710;" FontFamily="{DynamicResource App.IconFont}" Margin="0,0,8,0"/><TextBlock Text="{DynamicResource NewDownloadSectionLabel}"/></StackPanel></Button>
+                        </WrapPanel>
+                    </Grid>
+                    <Grid Grid.Row="1">
+                        <sections:BalancerView x:Name="BalancerPanel" Visibility="{Binding IsBalancerPage, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                        <Border Style="{StaticResource PanelCard}" Padding="20" Visibility="{Binding IsDownloadsPage, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <sections:QueueView/>
+                        </Border>
+                        <Border Style="{StaticResource PanelCard}" Padding="20" Visibility="{Binding IsQueuePage, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <sections:QueueView/>
+                        </Border>
+                        <TextBlock Visibility="{Binding IsPreferencesPage, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                   Text="Open the gear next to a category or queue to edit its settings." TextWrapping="Wrap"/>
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Grid>
+    </Border>
 </Window>

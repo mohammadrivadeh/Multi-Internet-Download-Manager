@@ -41,7 +41,18 @@ public sealed class QueueRow : ObservableObject
     public string DailyWindow => Job.DailyWindow is { } w ? $"{w.StartMinute / 60:00}:{w.StartMinute % 60:00}–{w.EndMinute / 60:00}:{w.EndMinute % 60:00} ({TimeSpan.FromMinutes(w.OffsetMinutes)})" : "—";
     public string Schedule => Job.NotBefore?.ToString("yyyy-MM-dd HH:mm zzz") ?? "";
     public string Progress => Job.TotalBytes is { } total ? $"{Job.CompletedBytes:N0} / {total:N0}" : $"{Job.CompletedBytes:N0}";
+    public string ProgressDisplay => Job.TotalBytes is { } total ? $"{FormatBytes(Job.CompletedBytes)} / {FormatBytes(total)}" : FormatBytes(Job.CompletedBytes);
+    public double ProgressPercent => Job.TotalBytes is long total && total > 0 ? Math.Clamp((double)Job.CompletedBytes / total * 100d, 0d, 100d) : 0d;
+    public string SizeDisplay => Job.TotalBytes is { } total ? FormatBytes(total) : "—";
+    private static string FormatBytes(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
+        double amount = Math.Max(0, bytes);
+        var unit = 0;
+        while (amount >= 1000 && unit < units.Length - 1) { amount /= 1000; unit++; }
+        return $"{amount:0.##} {units[unit]}";
+    }
     public string Failure => Job.CheckpointCleanupPending ? Desktop.Text("CheckpointCleanupNotice") : Job.FailureCode is { } code ? Desktop.Text($"QueueFailure{code}") : "";
-    public string RateLimit => Job.Options.BytesPerSecondLimit is { } limit ? (limit / 1024d).ToString("N1") : Desktop.Text("UnlimitedLabel");
+    public string RateLimit => Job.Options.BytesPerSecondLimit is { } limit ? (limit / 1000d).ToString("N1") : Desktop.Text("UnlimitedLabel");
     public int Priority => Job.Priority;
 }

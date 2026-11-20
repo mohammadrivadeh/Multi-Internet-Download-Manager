@@ -8,12 +8,12 @@ public interface IQueuedDownloadExecutor
     Task ExecuteAsync(QueueJob job, IProgress<DownloadProgress>? progress, CancellationToken token);
 }
 
-/// <summary>Runs one complete job at a time, preserving the application's worker bound.</summary>
+/// <summary>Runs one complete job at a time within each named queue.</summary>
 public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor executor, TimeProvider? clock = null)
 {
     private readonly TimeProvider time = clock ?? TimeProvider.System;
     private readonly SemaphoreSlim gate = new(1);
-    private readonly SemaphoreSlim runner = new(1);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> runners = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<Guid, QueueJob> jobs = [];
     private bool initialized;
     private readonly Dictionary<Guid, QueueJob> pendingWrites = [];
@@ -69,6 +69,53 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
         finally { gate.Release(); }
     }
 
+    public async Task SetQueueNameAsync(Guid id, string queueName, CancellationToken token = default)
+    {
+        queueName = ValidateQueueName(queueName);
+        await gate.WaitAsync(token);
+        try
+        {
+            RequireWritable();
+            var current = jobs[id];
+            if (current.State == QueueJobState.Running) throw new InvalidOperationException("Stop the queue before moving a running download.");
+            var changed = current with { QueueName = queueName };
+            store.Save(changed); jobs[id] = changed;
+        }
+        finally { gate.Release(); }
+    }
+
+    public async Task RenameQueueAsync(string oldName, string newName, CancellationToken token = default)
+    {
+        oldName = ValidateQueueName(oldName); newName = ValidateQueueName(newName);
+        await gate.WaitAsync(token);
+        try
+        {
+            RequireWritable();
+            var affected = jobs.Values.Where(j => string.Equals(j.QueueName, oldName, StringComparison.OrdinalIgnoreCase)).ToArray();
+            if (affected.Any(j => j.State == QueueJobState.Running)) throw new InvalidOperationException("Stop this queue before renaming it.");
+            var changed = affected.Select(j => j with { QueueName = newName }).ToArray();
+            store.SaveMany(changed);
+            foreach (var job in changed) jobs[job.Id] = job;
+        }
+        finally { gate.Release(); }
+    }
+
+    public async Task MoveQueueJobsAsync(string oldName, string newName, CancellationToken token = default)
+    {
+        oldName = ValidateQueueName(oldName); newName = ValidateQueueName(newName);
+        await gate.WaitAsync(token);
+        try
+        {
+            RequireWritable();
+            var affected = jobs.Values.Where(j => string.Equals(j.QueueName, oldName, StringComparison.OrdinalIgnoreCase)).ToArray();
+            if (affected.Any(j => j.State == QueueJobState.Running)) throw new InvalidOperationException("Stop this queue before moving its downloads.");
+            var changed = affected.Select(j => j with { QueueName = newName }).ToArray();
+            store.SaveMany(changed);
+            foreach (var job in changed) jobs[job.Id] = job;
+        }
+        finally { gate.Release(); }
+    }
+
     public async Task ChangeStateAsync(Guid id, QueueJobState next, CancellationToken token = default)
     {
         await gate.WaitAsync(token);
@@ -76,6 +123,12 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
         {
             RequireWritable();
             var current = jobs[id];
+            if (current.State == QueueJobState.Running && next is QueueJobState.Paused or QueueJobState.Cancelled &&
+                activeJobs.TryGetValue(id, out var active))
+            {
+                active.Stop(next);
+                return;
+            }
             if (current.State == QueueJobState.Running || next == QueueJobState.Running)
                 throw new InvalidOperationException("Active jobs must stop through the runner.");
             var changed = current.Transition(next);
@@ -83,6 +136,27 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
             jobs[id] = changed;
         }
         finally { gate.Release(); }
+    }
+
+    private readonly Dictionary<Guid, ActiveJob> activeJobs = new();
+
+    private sealed class ActiveJob(CancellationToken queueToken) : IDisposable
+    {
+        private readonly CancellationTokenSource source = CancellationTokenSource.CreateLinkedTokenSource(queueToken);
+        public CancellationToken Token => source.Token;
+        public QueueJobState? RequestedState { get; private set; }
+        public Task Cancellation { get; private set; } = Task.CompletedTask;
+
+        public void Stop(QueueJobState state)
+        {
+            if (RequestedState == QueueJobState.Cancelled)
+                return;
+            RequestedState = state;
+            if (!source.IsCancellationRequested)
+                Cancellation = source.CancelAsync();
+        }
+
+        public void Dispose() => source.Dispose();
     }
 
     public async Task SetCategoryAsync(Guid id, string category, CancellationToken token = default)
@@ -113,66 +187,84 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
     }
 
     public async Task RunReadyAsync(Action<Guid, DownloadProgress>? onProgress = null, CancellationToken token = default)
+        => await RunReadyAsync(QueueJob.MainQueue, onProgress, token);
+
+    public async Task RunReadyAsync(string queueName, Action<Guid, DownloadProgress>? onProgress = null, CancellationToken token = default)
+        => await RunReadyAsync(queueName, 1, onProgress, token);
+
+    public async Task RunReadyAsync(string queueName, int maxConcurrentDownloads, Action<Guid, DownloadProgress>? onProgress = null, CancellationToken token = default)
     {
-        if (!await runner.WaitAsync(0, token)) throw new InvalidOperationException("The queue already has a runner.");
+        queueName = ValidateQueueName(queueName);
+        if (maxConcurrentDownloads is < 1 or > 32) throw new ArgumentOutOfRangeException(nameof(maxConcurrentDownloads));
+        var runner = runners.GetOrAdd(queueName, _ => new SemaphoreSlim(1));
+        if (!await runner.WaitAsync(0, token)) throw new InvalidOperationException("This queue already has a runner.");
         try
         {
-            while (!token.IsCancellationRequested)
-            {
-                QueueJob? job;
-                await gate.WaitAsync(token);
-                try
-                {
-                    RequireWritable();
-                    job = QueueScheduling.Next(jobs.Values, time.GetUtcNow());
-                    if (job is null) return;
-                    job = job.Transition(QueueJobState.Running);
-                    store.Save(job); jobs[job.Id] = job;
-                }
-                finally { gate.Release(); }
-                DownloadProgress? latest = null;
-                var progressLock = new object();
-                var reporter = new CallbackProgress(value =>
-                {
-                    lock (progressLock) latest = value;
-                    onProgress?.Invoke(job.Id, value);
-                });
-                var terminal = QueueJobState.Completed;
-                string? failure = null;
-                try { await executor.ExecuteAsync(job, reporter, token); }
-                catch (TransferWindowClosedException) when (!token.IsCancellationRequested) { terminal = QueueJobState.Queued; }
-                catch (OperationCanceledException) { terminal = QueueJobState.Paused; }
-                catch (Exception ex) when (ex is not OutOfMemoryException)
-                {
-                    terminal = QueueJobState.Failed;
-                    // Persist only allowlisted categories, never exception text or URLs.
-                    failure = ex switch
-                    {
-                        InvalidDataException => "Validation", HttpRequestException or HttpIOException or EndOfStreamException => "Network",
-                        UnauthorizedAccessException or IOException => "Storage", TimeoutException => "Timeout",
-                        _ => "Failure"
-                    };
-                }
-                await gate.WaitAsync(CancellationToken.None); // Finish state persistence even after user cancellation.
-                try
-                {
-                    lock (progressLock)
-                    {
-                        job = job.Transition(terminal) with
-                        { CompletedBytes = latest?.CompletedBytes ?? job.CompletedBytes, TotalBytes = latest?.TotalBytes ?? job.TotalBytes, CheckpointCleanupPending = latest?.CheckpointCleanupPending ?? false, FailureCode = failure };
-                    }
-                    // Execution has ended: reflect the actual outcome even if its persistence fails.
-                    jobs[job.Id] = job;
-                    pendingWrites[job.Id] = job;
-                    store.Save(job);
-                    pendingWrites.Remove(job.Id);
-                }
-                finally { gate.Release(); }
-                if (terminal is QueueJobState.Paused or QueueJobState.Queued) return;
-                // A failed job never loops automatically; the next ready job may proceed.
-            }
+            await Task.WhenAll(Enumerable.Range(0, maxConcurrentDownloads).Select(_ => RunQueueWorkerAsync(queueName, onProgress, token)));
         }
         finally { runner.Release(); }
+    }
+
+    private async Task RunQueueWorkerAsync(string queueName, Action<Guid, DownloadProgress>? onProgress, CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            QueueJob? job;
+            ActiveJob active;
+            await gate.WaitAsync(token);
+            try
+            {
+                RequireWritable();
+                job = QueueScheduling.Next(jobs.Values.Where(j => string.Equals(j.QueueName, queueName, StringComparison.OrdinalIgnoreCase)), time.GetUtcNow());
+                if (job is null) return;
+                job = job.Transition(QueueJobState.Running);
+                store.Save(job); jobs[job.Id] = job;
+                active = new ActiveJob(token);
+                activeJobs.Add(job.Id, active);
+            }
+            finally { gate.Release(); }
+            DownloadProgress? latest = null;
+            var progressLock = new object();
+            var reporter = new CallbackProgress(value =>
+            {
+                lock (progressLock) latest = value;
+                onProgress?.Invoke(job.Id, value);
+            });
+            var terminal = QueueJobState.Completed;
+            string? failure = null;
+            try { await executor.ExecuteAsync(job, reporter, active.Token); }
+            catch (TransferWindowClosedException) { terminal = active.Token.IsCancellationRequested ? QueueJobState.Paused : QueueJobState.Queued; }
+            catch (OperationCanceledException) { terminal = QueueJobState.Paused; }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                terminal = QueueJobState.Failed;
+                failure = ex switch
+                {
+                    InvalidDataException => "Validation", HttpRequestException or HttpIOException or EndOfStreamException => "Network",
+                    UnauthorizedAccessException or IOException => "Storage", TimeoutException => "Timeout",
+                    _ => "Failure"
+                };
+            }
+            await gate.WaitAsync(CancellationToken.None);
+            try
+            {
+                activeJobs.Remove(job.Id);
+                if (terminal == QueueJobState.Paused && active.RequestedState is { } requested)
+                    terminal = requested;
+                lock (progressLock)
+                    job = job.Transition(terminal) with { CompletedBytes = latest?.CompletedBytes ?? job.CompletedBytes, TotalBytes = latest?.TotalBytes ?? job.TotalBytes,
+                        CheckpointCleanupPending = latest?.CheckpointCleanupPending ?? false, FailureCode = failure };
+                jobs[job.Id] = job; pendingWrites[job.Id] = job;
+                store.Save(job); pendingWrites.Remove(job.Id);
+            }
+            finally
+            {
+                gate.Release();
+                try { await active.Cancellation; }
+                finally { active.Dispose(); }
+            }
+            if (terminal == QueueJobState.Queued || terminal == QueueJobState.Paused && active.RequestedState is null) return;
+        }
     }
 
     public async Task RetryPersistenceAsync(CancellationToken token = default)
@@ -191,6 +283,13 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
 
     private void RequireInitialized()
     { if (!initialized) throw new InvalidOperationException("Initialize the queue first."); }
+
+    private static string ValidateQueueName(string value)
+    {
+        value = value?.Trim() ?? string.Empty;
+        if (value.Length is < 1 or > 48 || value.Any(char.IsControl)) throw new ArgumentException("Queue names must contain 1–48 printable characters.");
+        return value;
+    }
 
     private sealed class CallbackProgress(Action<DownloadProgress> report) : IProgress<DownloadProgress>
     { public void Report(DownloadProgress value) => report(value); }

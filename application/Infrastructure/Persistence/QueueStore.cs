@@ -32,6 +32,7 @@ public interface IQueueStore
 {
     IReadOnlyList<QueueJob> Load();
     void Save(QueueJob job);
+    void SaveMany(IReadOnlyCollection<QueueJob> jobs) { foreach (var job in jobs) Save(job); }
     void Remove(Guid id);
 }
 
@@ -116,6 +117,36 @@ public sealed class QueueStore : IQueueStore, IDisposable
         command.Parameters.AddWithValue("$payload", payload);
         command.ExecuteNonQuery();
         transaction.Commit();
+    }
+
+    public void SaveMany(IReadOnlyCollection<QueueJob> jobs)
+    {
+        if (jobs.Count == 0) return;
+        var payloads = new List<(string Id, byte[] Payload)>();
+        try
+        {
+            foreach (var job in jobs)
+            {
+                job.Validate();
+                var clear = JsonSerializer.SerializeToUtf8Bytes(job);
+                byte[] payload;
+                try { payload = protector.Protect(clear); }
+                finally { CryptographicOperations.ZeroMemory(clear); }
+                if (payload.Length > 1024 * 1024) throw new InvalidDataException("Queue payload exceeds its limit.");
+                payloads.Add((job.Id.ToString("N"), payload));
+            }
+            using var connection = Open();
+            using var transaction = connection.BeginTransaction();
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = "INSERT INTO jobs VALUES($id,$payload) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload";
+            var id = command.Parameters.Add("$id", SqliteType.Text);
+            var payloadParameter = command.Parameters.Add("$payload", SqliteType.Blob);
+            foreach (var item in payloads)
+            { id.Value = item.Id; payloadParameter.Value = item.Payload; command.ExecuteNonQuery(); }
+            transaction.Commit();
+        }
+        finally { foreach (var item in payloads) CryptographicOperations.ZeroMemory(item.Payload); }
     }
 
     public void Remove(Guid id)

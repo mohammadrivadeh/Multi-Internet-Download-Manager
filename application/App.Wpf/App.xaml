@@ -3,6 +3,8 @@
         <ResourceDictionary><ResourceDictionary.MergedDictionaries>
             <ResourceDictionary Source="Resources/Strings.xaml"/>
             <ResourceDictionary Source="Themes/Controls.xaml"/>
+            <ResourceDictionary Source="Themes/MoonlightPalette.xaml"/>
+            <ResourceDictionary Source="Themes/Moonlight.xaml"/>
         </ResourceDictionary.MergedDictionaries></ResourceDictionary>
     </Application.Resources>
 </Application>

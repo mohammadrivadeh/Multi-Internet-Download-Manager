@@ -16,22 +16,24 @@ namespace DownloadManager.App.ViewModels;
 
 public partial class MainViewModel : ObservableObject, IDisposable
 {
-    private CancellationTokenSource? stop;
+    private readonly Dictionary<string, CancellationTokenSource> queueStops = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Task> queueRunTasks = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> startedQueues = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> scheduleStops = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, HashSet<Guid>> scheduledRequeueJobs = new(StringComparer.OrdinalIgnoreCase);
     private readonly IQueueSession session;
     private readonly IDesktopServices desktop;
     private QueueCoordinator? queue;
     private PlannedDestination? plannedDestination;
-    private bool autoRun;
     private bool preferencesWritable;
-    private long runGeneration;
     private TimeSpan lastTelemetryAt;
-    private Guid? telemetryJob;
-    private TransferRateEstimator estimator = new();
+    private readonly Dictionary<Guid, TransferRateEstimator> jobEstimators = [];
     private readonly Stopwatch telemetryClock = Stopwatch.StartNew();
     private readonly NetworkPathCatalog catalog = new();
     private readonly IDesktopTimer timer;
     public ObservableCollection<PathSelection> Paths { get; } = [];
     public ObservableCollection<CategoryOption> Categories { get; } = [];
+    public ObservableCollection<DownloadQueueSettings> Queues { get; } = [];
     public ObservableCollection<QueueRow> Jobs { get; } = [];
     public ListCollectionView JobsView { get; }
     [ObservableProperty] private int jobCount;
@@ -45,6 +47,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string speedLimitKiB = "0";
     [ObservableProperty] private string category = DownloadCategory.Default;
     [ObservableProperty] private string categoryFilter = "";
+    [ObservableProperty] private string selectedQueueName = QueueJob.MainQueue;
+    [ObservableProperty] private string newQueueName = "";
+    [ObservableProperty] private string moveTargetQueueName = QueueJob.MainQueue;
+    [ObservableProperty] private string queueConcurrency = "1";
+    [ObservableProperty] private string queueStartTime = "";
+    [ObservableProperty] private string queueStopTime = "";
     [ObservableProperty] private string priority = "0";
     [ObservableProperty] private string windowStart = "";
     [ObservableProperty] private string windowEnd = "";
@@ -54,6 +62,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool isBusy;
     [ObservableProperty] private bool isReady;
     [ObservableProperty] private string status = "";
+    [ObservableProperty] private string currentPage = "Network Balancer";
+    public bool IsBalancerPage => CurrentPage == "Network Balancer";
+    public bool IsDownloadsPage => CurrentPage == "Downloads";
+    public bool IsQueuePage => CurrentPage == "Queue";
+    public bool IsConnectionsPage => CurrentPage == "Connections";
+    public bool IsPreferencesPage => CurrentPage == "Preferences";
+    partial void OnCurrentPageChanged(string value)
+    {
+        OnPropertyChanged(nameof(IsBalancerPage));
+        OnPropertyChanged(nameof(IsDownloadsPage));
+        OnPropertyChanged(nameof(IsQueuePage));
+        OnPropertyChanged(nameof(IsConnectionsPage));
+        OnPropertyChanged(nameof(IsPreferencesPage));
+    }
     [ObservableProperty] private double percentage;
     [ObservableProperty] private bool isIndeterminate;
     [ObservableProperty] private string speedText = "—";
@@ -66,6 +88,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public MainViewModel(IDesktopServices desktop, IQueueSession session)
     {
         this.desktop = desktop; this.session = session;
+        Destination = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
         Status = Text("ReadyStatus");
         JobsView = new ListCollectionView(Jobs) { Filter = FilterJob };
         var liveView = (System.ComponentModel.ICollectionViewLiveShaping)JobsView;
@@ -75,7 +98,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         timer = desktop.CreateTimer(async () =>
         {
             try { await CheckScheduleAsync(); }
-            catch (Exception ex) when (ex is not OutOfMemoryException) { autoRun = false; Status = Text("QueueLoadError"); }
+            catch (Exception ex) when (ex is not OutOfMemoryException) { startedQueues.Clear(); Status = Text("QueueLoadError"); }
         });
     }
 
@@ -88,8 +111,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             try
             {
                 var saved = await session.LoadPreferencesAsync();
-                WorkerCount = saved.Workers.ToString(); SpeedLimitKiB = saved.SpeedLimitKiB.ToString();
-                Priority = saved.Priority.ToString(); Category = saved.Category; DestinationRoot = saved.DestinationRoot ?? "";
+                savedPreferences = saved;
+                ReconcileQueues(saved.Queues);
+                await RefreshJobsAsync();
                 preferencesWritable = true;
             }
             catch (Exception ex) when (ex is not OutOfMemoryException) { Status = Text("PreferencesLoadError"); }
@@ -106,40 +130,51 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private bool FilterJob(object item)
     {
         if (item is not QueueRow row) return false;
-        return (string.IsNullOrWhiteSpace(Search) || row.Filename.Contains(Search, StringComparison.CurrentCultureIgnoreCase))
+        return string.Equals(SelectedQueueName, row.Job.QueueName, StringComparison.OrdinalIgnoreCase)
+            && (string.IsNullOrWhiteSpace(Search) || row.Filename.Contains(Search, StringComparison.CurrentCultureIgnoreCase))
             && (string.IsNullOrEmpty(CategoryFilter) || string.Equals(CategoryFilter, row.Job.Category, StringComparison.OrdinalIgnoreCase))
-            && (StateFilter == "All" || StateFilter == "Active" && row.Job.State is QueueJobState.Queued or QueueJobState.Running or QueueJobState.Paused
-                || StateFilter == row.Job.State.ToString());
+            && (StateFilter == "All" || StateFilter == row.Job.State.ToString());
     }
     partial void OnCategoryFilterChanged(string value) => JobsView.Refresh();
+    partial void OnSelectedQueueNameChanged(string value)
+    {
+        OnPropertyChanged(nameof(IsSelectedQueueRunning));
+        JobsView.Refresh();
+        LoadQueueSettings(value);
+    }
+    public bool IsSelectedQueueRunning => queueStops.ContainsKey(SelectedQueueName);
     partial void OnSearchChanged(string value) => JobsView.Refresh();
     partial void OnStateFilterChanged(string value) => JobsView.Refresh();
 
     private void UpdateProgress(Guid id, DownloadProgress value)
     {
-        if (telemetryJob != id || value.Stage != DownloadStage.Downloading) { telemetryJob = id; estimator = new(); }
         lastTelemetryAt = telemetryClock.Elapsed;
-        var sample = estimator.Sample(value.AcceptedBytes, value.TotalBytes, telemetryClock.Elapsed);
-        SpeedText = value.Stage == DownloadStage.Downloading && sample.BytesPerSecond > 0 ? $"{sample.BytesPerSecond / 1024:N1} KiB/s" : "—";
+        if (!jobEstimators.TryGetValue(id, out var jobEstimator)) jobEstimators[id] = jobEstimator = new();
+        var sample = jobEstimator.Sample(value.AcceptedBytes, value.TotalBytes, telemetryClock.Elapsed);
+        SpeedText = value.Stage == DownloadStage.Downloading && sample.BytesPerSecond > 0 ? $"{sample.BytesPerSecond / 1000:N1} KB/s" : "—";
         RemainingText = value.Stage == DownloadStage.Downloading && sample.Remaining is { } remaining ? remaining.ToString(@"d\.hh\:mm\:ss") : "—";
         var existing = Jobs.FirstOrDefault(row => row.Job.Id == id);
         if (existing is not null && existing.Job.State is QueueJobState.Queued or QueueJobState.Running)
         {
+            var becameRunning = existing.Job.State != QueueJobState.Running;
             existing.Update(existing.Job with { State = QueueJobState.Running, CompletedBytes = value.CompletedBytes, TotalBytes = value.TotalBytes });
+            if (becameRunning) OnPropertyChanged(nameof(QueueStatuses));
             RefreshActionAvailability();
         }
         IsIndeterminate = value.TotalBytes is null;
         Percentage = value.TotalBytes is > 0 ? (double)value.AcceptedBytes / value.TotalBytes.Value * 100 : value.Stage == DownloadStage.Completed ? 100 : 0;
-        if (value.Stage != DownloadStage.Downloading) estimator = new();
+        if (value.Stage != DownloadStage.Downloading) jobEstimators.Remove(id);
         Status = string.Format(System.Globalization.CultureInfo.CurrentCulture, Text("ProgressFormat"), Text($"Stage{value.Stage}"), value.CompletedBytes, value.TotalBytes?.ToString("N0") ?? Text("UnknownTotal"));
     }
 
     public async Task ShutdownAsync()
     {
-        IsReady = false; autoRun = false; timer.Stop(); stop?.Cancel();
+        IsReady = false; startedQueues.Clear(); timer.Stop(); foreach (var cancellation in queueStops.Values) cancellation.Cancel();
         var tasks = new[] { RunQueueCommand.ExecutionTask, AddCommand.ExecutionTask, ResumeSelectedCommand.ExecutionTask,
-            CancelSelectedCommand.ExecutionTask, ClearHistoryCommand.ExecutionTask, RefreshCommand.ExecutionTask, SaveDefaultsCommand.ExecutionTask, AssignCategoryCommand.ExecutionTask, RetryQueueSaveCommand.ExecutionTask };
-        try { await Task.WhenAll(tasks.Where(t => t is not null).Cast<Task>()); }
+            CancelSelectedCommand.ExecutionTask, ClearHistoryCommand.ExecutionTask, RefreshCommand.ExecutionTask, AssignCategoryCommand.ExecutionTask,
+            RetryQueueSaveCommand.ExecutionTask, SaveQueueSettingsCommand.ExecutionTask, CreateQueueCommand.ExecutionTask, RenameQueueCommand.ExecutionTask,
+            DeleteQueueCommand.ExecutionTask, MoveSelectedQueueCommand.ExecutionTask };
+        try { await Task.WhenAll(tasks.Where(t => t is not null).Cast<Task>().Concat(queueRunTasks.Values.ToArray())); }
         catch (Exception ex) when (ex is not OutOfMemoryException) { Status = Text("QueueSaveError"); }
         if (queue is not null)
         {
@@ -149,7 +184,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     public void Dispose()
-    { autoRun = false; timer.Stop(); session.Dispose(); }
+    { startedQueues.Clear(); timer.Stop(); foreach (var cancellation in queueStops.Values) cancellation.Cancel(); session.Dispose(); }
+
+    private void ReconcileQueues(IEnumerable<DownloadQueueSettings> desired)
+    {
+        var items = desired.OrderBy(q => string.Equals(q.Name, QueueJob.MainQueue, StringComparison.OrdinalIgnoreCase) ? 0 : 1).ToArray();
+        DownloadManager.App.Presentation.StableCollection.Reconcile(Queues, items, q => q.Name, q => q.Name, q => q, (_, _) => { });
+        if (!Queues.Any(q => string.Equals(q.Name, SelectedQueueName, StringComparison.OrdinalIgnoreCase))) SelectedQueueName = QueueJob.MainQueue;
+        LoadQueueSettings(SelectedQueueName);
+    }
+
+    private void LoadQueueSettings(string name)
+    {
+        var settings = Queues.FirstOrDefault(q => string.Equals(q.Name, name, StringComparison.OrdinalIgnoreCase)) ?? new DownloadQueueSettings();
+        QueueConcurrency = settings.MaxConcurrentDownloads == 0 ? "All" : settings.MaxConcurrentDownloads.ToString(); QueueStartTime = settings.StartTime; QueueStopTime = settings.StopTime;
+    }
 
     private sealed class UiProgress(IDesktopServices desktop, Action<Guid, DownloadProgress> update)
     {

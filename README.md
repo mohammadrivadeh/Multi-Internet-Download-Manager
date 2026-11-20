@@ -1,6 +1,8 @@
 # Multi-Internet Download Manager
 
-Independent Windows 10/11 x64 download manager, under active development. The [approved plan](AGENTIC_DEVELOPMENT_PLAN.md) defines the full roadmap; this revision implements an initial functional engine and WPF application, not every planned feature.
+This project is moving toward a Windows system-wide network balancer based on net-merge. The WPF app opens on Network Balancer and can scan eligible adapters when built with the upstream diagnostics helper. An opt-in build adds Start and Stop for testing capture in an isolated Windows VM. The [balancer migration plan](docs/decisions/0018-windows-network-balancer.md) covers preview build instructions, route recovery, and pending Windows acceptance.
+
+The Downloads and Queue views provide the segmented downloader described in the [original downloader plan](AGENTIC_DEVELOPMENT_PLAN.md).
 
 ## Available now
 
