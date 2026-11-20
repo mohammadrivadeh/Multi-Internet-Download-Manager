@@ -1,9 +1,13 @@
 using System.ComponentModel;
 using System.IO;
+using System.Net;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using DownloadManager.NetworkBalancer;
+using DownloadManager.Infrastructure.Networking;
 
 namespace DownloadManager.App.Views.Sections;
 
@@ -12,6 +16,8 @@ public partial class BalancerView : UserControl
     private bool scanned;
     private CaptureSession? capture = null;
     private AdapterRow[]? adapterRows;
+    private readonly NetworkPathCatalog catalog = new();
+    private CancellationTokenSource? scan;
 
     public BalancerView()
     {
@@ -44,31 +50,93 @@ public partial class BalancerView : UserControl
 
     private async Task ScanAsync()
     {
+        if (scan is not null || capture is not null) return;
+        using var cancellation = new CancellationTokenSource();
+        scan = cancellation;
         ScanButton.IsEnabled = false;
-        ScanStatus.Text = "Scanning adapters…";
+        StartCaptureButton.IsEnabled = false;
+        AdapterTable.IsEnabled = false;
+        ScanStatus.Text = "Scanning and testing adapters…";
         try
         {
-            var adapters = await AdapterDiagnostics.ScanAsync();
-            var previous = adapterRows?.Where(row => row.Selected).Select(row => (row.Adapter.Index, row.Adapter.Name)).ToHashSet();
-            adapterRows = adapters.Select(adapter => new AdapterRow(adapter,
-                string.IsNullOrEmpty(adapter.Reason) && (previous is null || previous.Contains((adapter.Index, adapter.Name))))).ToArray();
-            AdapterTable.ItemsSource = adapterRows;
-            var eligible = adapterRows.Count(row => row.Eligible);
-            ScanStatus.Text = $"Eligible adapters detected: {eligible}.";
+            var adapters = await AdapterDiagnostics.ScanAsync(cancellation.Token);
+            var paths = await Task.Run(catalog.Discover, cancellation.Token);
+            var previous = adapterRows?.Where(row => row.Online)
+                .ToDictionary(row => (row.Adapter.Index, row.Adapter.Name), row => row.Selected);
+            var rows = new List<AdapterRow>();
+            foreach (var adapter in adapters)
+            {
+                AdapterSample? sample = null;
+                string? family = null;
+                if (string.IsNullOrEmpty(adapter.Reason))
+                {
+                    ScanStatus.Text = $"Testing {adapter.Name}…";
+                    foreach (var path in TestPaths(adapter, paths))
+                    {
+                        var result = await Task.Run(() => AdapterSample.MeasureAsync(path, catalog, cancellation.Token), cancellation.Token);
+                        if (result is null || (sample is not null && result.MegabitsPerSecond is null)) continue;
+                        sample = result;
+                        family = path.SourceAddress.AddressFamily == AddressFamily.InterNetwork ? "IPv4" : "IPv6";
+                        if (sample.MegabitsPerSecond.HasValue) break;
+                    }
+                }
+                var selected = sample is not null && previous?.GetValueOrDefault((adapter.Index, adapter.Name), true) != false;
+                rows.Add(new AdapterRow(adapter, sample, family, selected));
+            }
+            adapterRows = rows.ToArray();
+            AdapterTable.ItemsSource = rows.Where(row => row.Online).ToArray();
+            OtherAdapterTable.ItemsSource = rows.Where(row => !row.Online).ToArray();
+            ScanStatus.Text = $"{rows.Count(row => row.Online)} online · {rows.Count(row => !row.Online)} other";
+            UpdateSelectionSummary();
         }
-        catch (Exception error) when (error is IOException or InvalidDataException or Win32Exception or JsonException or TimeoutException)
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        catch (Exception error) when (error is IOException or InvalidDataException or Win32Exception
+                                      or JsonException or TimeoutException or NetworkInformationException)
         {
             ScanStatus.Text = error.Message;
         }
-        finally { ScanButton.IsEnabled = true; }
+        finally
+        {
+            scan = null;
+            ScanButton.IsEnabled = true;
+            AdapterTable.IsEnabled = true;
+            StartCaptureButton.IsEnabled = true;
+        }
+    }
+
+    private static IEnumerable<NetworkPath> TestPaths(DetectedAdapter adapter, IReadOnlyList<NetworkPath> paths)
+    {
+        foreach (var address in new[] { adapter.IPv4, adapter.IPv6 })
+        {
+            if (!IPAddress.TryParse(address, out var advertised)) continue;
+            var match = paths.FirstOrDefault(path => path.Name == adapter.Name && path.SourceAddress.Equals(advertised));
+            if (match is not null) yield return match;
+        }
+    }
+
+    private void AdapterSelectionChanged(object sender, RoutedEventArgs e) => UpdateSelectionSummary();
+
+    private void UpdateSelectionSummary()
+    {
+        var selected = adapterRows?.Where(row => row.Online && row.Selected).ToArray() ?? [];
+        if (selected.Length == 0)
+        {
+            SelectionSummary.Text = "Select online adapters to estimate combined download speed.";
+            return;
+        }
+        var measured = selected.Where(row => row.Sample?.MegabitsPerSecond is not null).ToArray();
+        var speed = measured.Length == 0 ? "estimate unavailable"
+            : $"{measured.Sum(row => row.Sample!.MegabitsPerSecond!.Value):N1} Mbps estimated across concurrent connections";
+        var coverage = measured.Length > 0 && measured.Length != selected.Length ? $" ({measured.Length} sampled)" : "";
+        SelectionSummary.Text = $"{selected.Length} selected → {speed}{coverage}";
     }
 
     private async void StartCaptureClick(object sender, RoutedEventArgs e)
     {
 #if CAPTURE_PREVIEW
-        if (capture is not null)
+        if (capture is not null || scan is not null)
             return;
-        var selected = adapterRows?.Where(row => row.Eligible && row.Selected)
+        var selected = adapterRows?.Where(row => row.Online && row.Selected)
             .Select(row => new CaptureAdapterChoice(row.Adapter.Index, row.Adapter.Name)).ToArray();
         if (selected is not { Length: > 0 })
         {
@@ -76,6 +144,8 @@ public partial class BalancerView : UserControl
             return;
         }
         StartCaptureButton.IsEnabled = false;
+        ScanButton.IsEnabled = false;
+        AdapterTable.IsEnabled = false;
         CaptureStatus.Text = "Waiting for Windows approval and capture startup…";
         var session = new CaptureSession(Path.Combine(AppContext.BaseDirectory, "balancer", "desktop-capture.exe"), selected);
         capture = session;
@@ -105,6 +175,8 @@ public partial class BalancerView : UserControl
         {
             capture = null;
             StartCaptureButton.IsEnabled = true;
+            ScanButton.IsEnabled = true;
+            AdapterTable.IsEnabled = true;
             StopCaptureButton.IsEnabled = false;
         }
 #else
@@ -135,10 +207,16 @@ public partial class BalancerView : UserControl
         }
     }
 
-    private sealed class AdapterRow(DetectedAdapter adapter, bool selected)
+    public void CancelNetworkTests() => scan?.Cancel();
+
+    private sealed class AdapterRow(DetectedAdapter adapter, AdapterSample? sample, string? family, bool selected)
     {
         public DetectedAdapter Adapter { get; } = adapter;
-        public bool Eligible => string.IsNullOrEmpty(Adapter.Reason);
+        public AdapterSample? Sample { get; } = sample;
+        public bool Online => Sample is not null;
         public bool Selected { get; set; } = selected;
+        public string Latency => Sample is { } result ? $"{result.Latency.TotalMilliseconds:N0} ms · {family}" : "—";
+        public string Download => Sample?.MegabitsPerSecond is { } speed ? $"{speed:N1} Mbps" : "Unavailable";
+        public string Status => string.IsNullOrEmpty(Adapter.Reason) ? "Cloudflare HTTPS test failed" : Adapter.Reason;
     }
 }

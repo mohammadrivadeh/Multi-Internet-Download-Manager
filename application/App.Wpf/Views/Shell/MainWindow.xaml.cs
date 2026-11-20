@@ -165,6 +165,7 @@ public partial class MainWindow : Window
         e.Cancel = true;
         if (closing) return;
         closing = true;
+        BalancerPanel.CancelNetworkTests();
         viewModel.PauseCommand.Execute(null);
         await BalancerPanel.StopCaptureAsync();
         if (initialization is not null) await initialization;

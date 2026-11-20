@@ -2,6 +2,26 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              Loaded="OnLoaded" IsVisibleChanged="OnVisibilityChanged">
+    <UserControl.Resources>
+        <Style x:Key="AdapterCellText" TargetType="TextBlock">
+            <Setter Property="TextAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+            <Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+            <Setter Property="Margin" Value="4,0"/>
+        </Style>
+        <Style x:Key="AdapterHeader" TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style x:Key="AdapterGrid" TargetType="DataGrid" BasedOn="{StaticResource {x:Type DataGrid}}">
+            <Setter Property="AutoGenerateColumns" Value="False"/>
+            <Setter Property="IsReadOnly" Value="True"/>
+            <Setter Property="CanUserAddRows" Value="False"/>
+            <Setter Property="RowHeight" Value="38"/>
+            <Setter Property="ColumnHeaderStyle" Value="{StaticResource AdapterHeader}"/>
+        </Style>
+    </UserControl.Resources>
     <Border Style="{StaticResource PanelCard}" Padding="20">
         <DockPanel>
             <StackPanel DockPanel.Dock="Top">
@@ -10,33 +30,56 @@
                             Style="{StaticResource PrimaryButton}" Visibility="Collapsed" Click="StartCaptureClick"/>
                     <Button x:Name="StopCaptureButton" Content="Stop balancing"
                             IsEnabled="False" Visibility="Collapsed" Click="StopCaptureClick"/>
-                    <Button x:Name="ScanButton" Content="Scan adapters" Click="ScanClick"/>
+                    <Button x:Name="ScanButton" Content="Retry network tests" Click="ScanClick"/>
                 </WrapPanel>
                 <TextBlock x:Name="CaptureStatus" Text="Traffic capture is unavailable in this build."
                            Foreground="{DynamicResource App.TextMuted}" TextWrapping="Wrap"
                            AutomationProperties.LiveSetting="Polite" Margin="0,8,0,0"/>
                 <TextBlock x:Name="ScanStatus"
                            Foreground="{DynamicResource App.TextMuted}" TextWrapping="Wrap"
-                           AutomationProperties.LiveSetting="Polite" Margin="0,8,0,12"/>
+                           AutomationProperties.LiveSetting="Polite" Margin="0,8,0,4"/>
+                <TextBlock Text="Tests use Cloudflare HTTPS with a 1 MiB download sample per tested path."
+                           Foreground="{DynamicResource App.TextMuted}" TextWrapping="Wrap"/>
+                <TextBlock x:Name="SelectionSummary" Text="Select online adapters to estimate combined download speed."
+                           Foreground="{DynamicResource App.Accent}" FontWeight="SemiBold" TextWrapping="Wrap"
+                           AutomationProperties.LiveSetting="Polite" Margin="0,10,0,12"/>
             </StackPanel>
-            <DataGrid x:Name="AdapterTable" AutoGenerateColumns="False" IsReadOnly="True"
-                      CanUserAddRows="False" AutomationProperties.Name="Detected network adapters">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="Internet connections" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                <DataGrid x:Name="AdapterTable" Grid.Row="1" Style="{StaticResource AdapterGrid}" AutomationProperties.Name="Internet connections">
                 <DataGrid.Columns>
                     <DataGridTemplateColumn Header="Use" Width="65">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <CheckBox IsChecked="{Binding Selected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                          IsEnabled="{Binding Eligible}" HorizontalAlignment="Center"
+                                          Click="AdapterSelectionChanged" HorizontalAlignment="Center" VerticalAlignment="Center"
                                           AutomationProperties.Name="{Binding Adapter.Name, StringFormat='Use {0}'}"/>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTextColumn Header="Adapter" Binding="{Binding Adapter.Name}" Width="*"/>
-                    <DataGridTextColumn Header="IPv4" Binding="{Binding Adapter.IPv4}" Width="125"/>
-                    <DataGridTextColumn Header="IPv6" Binding="{Binding Adapter.IPv6}" Width="190"/>
-                    <DataGridTextColumn Header="Discovery status" Binding="{Binding Adapter.DiscoveryStatus}" Width="*"/>
+                    <DataGridTextColumn Header="Adapter" Binding="{Binding Adapter.Name}" Width="1.2*" ElementStyle="{StaticResource AdapterCellText}"/>
+                    <DataGridTextColumn Header="IPv4" Binding="{Binding Adapter.IPv4}" Width="*" ElementStyle="{StaticResource AdapterCellText}"/>
+                    <DataGridTextColumn Header="IPv6" Binding="{Binding Adapter.IPv6}" Width="1.4*" ElementStyle="{StaticResource AdapterCellText}"/>
+                    <DataGridTextColumn Header="HTTPS latency" Binding="{Binding Latency}" Width="110" ElementStyle="{StaticResource AdapterCellText}"/>
+                    <DataGridTextColumn Header="Download sample" Binding="{Binding Download}" Width="125" ElementStyle="{StaticResource AdapterCellText}"/>
                 </DataGrid.Columns>
-            </DataGrid>
+                </DataGrid>
+                <TextBlock Grid.Row="2" Text="Other adapters" FontWeight="SemiBold" Margin="0,12,0,6"/>
+                <DataGrid x:Name="OtherAdapterTable" Grid.Row="3" Style="{StaticResource AdapterGrid}" AutomationProperties.Name="Other adapters">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Adapter" Binding="{Binding Adapter.Name}" Width="*" ElementStyle="{StaticResource AdapterCellText}"/>
+                        <DataGridTextColumn Header="IPv4" Binding="{Binding Adapter.IPv4}" Width="*" ElementStyle="{StaticResource AdapterCellText}"/>
+                        <DataGridTextColumn Header="IPv6" Binding="{Binding Adapter.IPv6}" Width="1.3*" ElementStyle="{StaticResource AdapterCellText}"/>
+                        <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="1.5*" ElementStyle="{StaticResource AdapterCellText}"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
         </DockPanel>
     </Border>
 </UserControl>

@@ -1,5 +1,8 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Net;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -22,7 +25,7 @@ public static class AdapterDiagnostics
     {
         var executable = Path.Combine(AppContext.BaseDirectory, "balancer", "adapter-diagnostics.exe");
         if (!File.Exists(executable))
-            throw new FileNotFoundException("Adapter diagnostics are missing from this build.", executable);
+            return await Task.Run(ScanManaged, cancellationToken);
 
         var startInfo = new ProcessStartInfo(executable)
         {
@@ -64,6 +67,21 @@ public static class AdapterDiagnostics
             throw new TimeoutException("Adapter discovery timed out.");
         }
     }
+
+    private static DetectedAdapter[] ScanManaged() => NetworkInterface.GetAllNetworkInterfaces().Select(adapter =>
+    {
+        var properties = adapter.GetIPProperties();
+        var addresses = properties.UnicastAddresses.Select(entry => entry.Address).Where(address =>
+            !IPAddress.IsLoopback(address) && !address.IsIPv6LinkLocal
+            && !(address.AddressFamily == AddressFamily.InterNetwork && address.GetAddressBytes() is [169, 254, _, _])).ToArray();
+        var ipv4 = addresses.FirstOrDefault(address => address.AddressFamily == AddressFamily.InterNetwork);
+        var ipv6 = addresses.FirstOrDefault(address => address.AddressFamily == AddressFamily.InterNetworkV6);
+        var index = properties.GetIPv4Properties()?.Index ?? properties.GetIPv6Properties()?.Index ?? 0;
+        var reason = adapter.OperationalStatus != OperationalStatus.Up ? "Disconnected"
+            : adapter.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel ? "Loopback or tunnel"
+            : ipv4 is null && ipv6 is null ? "No usable IP address" : "";
+        return new DetectedAdapter(adapter.Name, index, ipv4?.ToString() ?? "", ipv6?.ToString() ?? "", reason);
+    }).ToArray();
 
     private sealed record DiagnosticReport(
         [property: JsonPropertyName("version")] int Version,
