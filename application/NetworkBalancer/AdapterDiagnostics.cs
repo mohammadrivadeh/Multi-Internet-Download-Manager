@@ -19,7 +19,18 @@ public static class AdapterDiagnostics
     public static Task<IReadOnlyList<DetectedAdapter>> ScanAsync(CancellationToken cancellationToken = default)
         => Task.Run<IReadOnlyList<DetectedAdapter>>(() => ScanManaged(), cancellationToken);
 
-    private static DetectedAdapter[] ScanManaged() => NetworkInterface.GetAllNetworkInterfaces().Select(adapter =>
+    private static DetectedAdapter[] ScanManaged() => NetworkInterface.GetAllNetworkInterfaces().Select(ScanAdapter).ToArray();
+
+    private static DetectedAdapter ScanAdapter(NetworkInterface adapter)
+    {
+        try { return ReadAdapter(adapter); }
+        catch (NetworkInformationException)
+        {
+            return new DetectedAdapter(adapter.Name, 0, "", "", "Adapter configuration unavailable");
+        }
+    }
+
+    private static DetectedAdapter ReadAdapter(NetworkInterface adapter)
     {
         var properties = adapter.GetIPProperties();
         var addresses = properties.UnicastAddresses.Select(entry => entry.Address).Where(address =>
@@ -30,12 +41,31 @@ public static class AdapterDiagnostics
             ? addresses.FirstOrDefault(address => address.AddressFamily == AddressFamily.InterNetwork) : null;
         var ipv6 = gateways.Any(address => address.AddressFamily == AddressFamily.InterNetworkV6 && !address.Equals(IPAddress.IPv6Any))
             ? addresses.FirstOrDefault(address => address.AddressFamily == AddressFamily.InterNetworkV6 && !address.IsIPv6UniqueLocal) : null;
-        var index = properties.GetIPv4Properties()?.Index ?? properties.GetIPv6Properties()?.Index ?? 0;
+        var index = TryReadIndex(adapter, properties, NetworkInterfaceComponent.IPv4)
+            ?? TryReadIndex(adapter, properties, NetworkInterfaceComponent.IPv6) ?? 0;
         var reason = adapter.OperationalStatus != OperationalStatus.Up ? "Disconnected"
             : adapter.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel ? "Loopback or tunnel"
             : adapter.Name == "Multi-Internet Balancer" ? "Capture adapter"
-            : ipv4 is null && ipv6 is null ? "No usable IP address with a default gateway" : "";
+            : ipv4 is null && ipv6 is null ? "No usable IP address with a default gateway"
+            : index <= 0 ? "Interface index unavailable" : "";
         return new DetectedAdapter(adapter.Name, index, ipv4?.ToString() ?? "", ipv6?.ToString() ?? "", reason);
-    }).ToArray();
+    }
+
+    private static int? TryReadIndex(NetworkInterface adapter, IPInterfaceProperties properties, NetworkInterfaceComponent component)
+    {
+        if (!adapter.Supports(component)) return null;
+        try
+        {
+            var index = component == NetworkInterfaceComponent.IPv4
+                ? properties.GetIPv4Properties()?.Index
+                : properties.GetIPv6Properties()?.Index;
+            return index is > 0 ? index : null;
+        }
+        catch (NetworkInformationException)
+        {
+            // The protocol can become unavailable while Windows is updating the adapter.
+            return null;
+        }
+    }
 
 }

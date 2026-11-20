@@ -30,8 +30,15 @@ internal sealed class CheckpointStore : IDisposable
             using var reader = select.ExecuteReader();
             if (reader.Read())
             {
-                if (reader.GetString(0) != sourceHash || reader.GetInt64(1) != length || reader.GetString(2) != etag)
-                    throw new InvalidDataException("The saved download belongs to a different resource. Preserve it and select a new destination.");
+                var changed = CheckpointDifferences.None;
+                if (reader.GetString(0) != sourceHash) changed |= CheckpointDifferences.Source;
+                if (reader.GetInt64(1) != length) changed |= CheckpointDifferences.Length;
+                if (reader.GetString(2) != etag) changed |= CheckpointDifferences.ETag;
+                if (changed != CheckpointDifferences.None)
+                    throw new InvalidDataException($"Saved download identity changed ({changed}). Select a fresh destination.")
+                    {
+                        Data = { [nameof(CheckpointDifferences)] = changed }
+                    };
             }
             else
             {

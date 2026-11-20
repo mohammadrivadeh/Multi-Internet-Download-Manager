@@ -106,6 +106,10 @@
     <sys:String x:Key="QueueWaitingStatus">Ready jobs processed. The started queue will check for scheduled work while the app remains open.</sys:String>
     <sys:String x:Key="FailureColumn">Issue</sys:String>
     <sys:String x:Key="QueueFailureValidation">Response, saved data or checksum mismatch</sys:String>
+    <sys:String x:Key="CheckpointMismatchMessage">Cannot resume because the {0} changed. The partial download is preserved. Use Redownload from zero to save a new copy.</sys:String>
+    <sys:String x:Key="CheckpointFieldSource">source address</sys:String>
+    <sys:String x:Key="CheckpointFieldLength">file size</sys:String>
+    <sys:String x:Key="CheckpointFieldETag">server file version (ETag)</sys:String>
     <sys:String x:Key="QueueFailureNetwork">Server or connection failure</sys:String>
     <sys:String x:Key="QueueFailureStorage">Check destination access and disk space</sys:String>
     <sys:String x:Key="QueueFailureTimeout">Response timed out</sys:String>

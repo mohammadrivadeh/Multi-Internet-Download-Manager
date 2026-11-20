@@ -34,12 +34,14 @@ public partial class MainViewModel
             if (!int.TryParse(WorkerCount, out var workers) || !int.TryParse(Priority,out var priorityValue)
                 || !decimal.TryParse(SpeedLimitKiB, System.Globalization.NumberStyles.AllowDecimalPoint, System.Globalization.CultureInfo.InvariantCulture, out var speed) || speed is < 0 or > 1048576 || speed * 1024 != decimal.Truncate(speed * 1024)) throw new ArgumentException();
             var id = editingJob.Id;
+            var paths = UseSystemRoute ? [] : ReplaceEditedConnections ? DownloadAdapters?.ToArray() ?? [] : editingJob.Paths;
+            if (!UseSystemRoute && paths.Count == 0) { Status = SelectAdaptersMessage; return; }
             var settings = new QueueJobSettings
             {
-                Workers = workers, BytesPerSecondLimit = speed == 0 ? null : (long)(speed * 1024),
+                Workers = Math.Max(workers, paths.Count), BytesPerSecondLimit = speed == 0 ? null : (long)(speed * 1024),
                 Category = Category, Priority = priorityValue, NotBefore = QueueScheduling.ParseStart(ScheduledStart),
                 DailyWindow = DailyTransferWindow.Parse(WindowStart,WindowEnd,WindowOffset), UseSystemRoute = UseSystemRoute,
-                Paths = UseSystemRoute ? [] : ReplaceEditedConnections ? Paths.Where(p=>p.Selected).Select(p=>p.Capture()).ToArray() : editingJob.Paths
+                Paths = paths
             };
             await Task.Run(() => queue.UpdateSettingsAsync(id, settings));
             editingJob = null; IsEditing = false; ReplaceEditedConnections = false;

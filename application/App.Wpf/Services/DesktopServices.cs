@@ -6,7 +6,7 @@ public interface IDesktopTimer { void Start(); void Stop(); }
 public interface IDesktopServices
 {
     string Text(string key);
-    string? ChooseDestination();
+    string? ChooseDestination(string suggestion);
     string? ChooseFolder();
     void Post(Action action);
     IDesktopTimer CreateTimer(Func<Task> tick);
@@ -15,9 +15,14 @@ public interface IDesktopServices
 public sealed class DesktopServices(Dispatcher dispatcher) : IDesktopServices
 {
     public string Text(string key) => (string)System.Windows.Application.Current.FindResource(key);
-    public string? ChooseDestination()
+    public string? ChooseDestination(string suggestion)
     {
-        var picker = new SaveFileDialog { OverwritePrompt = false };
+        var picker = new SaveFileDialog
+        {
+            InitialDirectory = System.IO.Path.GetDirectoryName(suggestion),
+            FileName = System.IO.Path.GetFileName(suggestion),
+            OverwritePrompt = false
+        };
         return picker.ShowDialog() == true ? picker.FileName : null;
     }
     public string? ChooseFolder()

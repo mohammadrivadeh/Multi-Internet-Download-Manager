@@ -63,7 +63,7 @@ public partial class MainViewModel
         var category = Category;
         if (destination != automaticDestination || !Uri.TryCreate(url.Trim(), UriKind.Absolute, out var source) ||
             source.Scheme is not ("http" or "https") || source.UserInfo.Length != 0) return;
-        var filename = await DownloadFilename.TryResolveAsync(source);
+        var filename = await ResolveSelectedFilenameAsync(source, DownloadAdapters ?? []);
         if (filename is null || Url != url || Destination != destination || Category != category || AddCommand.IsRunning) return;
         try
         {
@@ -71,6 +71,31 @@ public partial class MainViewModel
             Destination = automaticDestination = plannedDestination.FullPath;
         }
         catch (ArgumentException) { }
+    }
+
+    private async Task<string?> ResolveSelectedFilenameAsync(Uri source, IReadOnlyList<QueuedPath> selected)
+    {
+        if (selected.Count == 0) return null;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+        try
+        {
+            var available = await Task.Run(catalog.Discover, timeout.Token);
+            foreach (var saved in selected)
+            {
+                timeout.Token.ThrowIfCancellationRequested();
+                var path = NetworkPathCatalog.ResolveSelected(available, saved.AdapterId, System.Net.IPAddress.Parse(saved.SourceAddress));
+                if (path is null) continue;
+                try
+                {
+                    using var session = new NetworkPathSession(path, catalog);
+                    if (await DownloadFilename.TryResolveAsync(source, session.Client, timeout.Token) is { } name)
+                        return name;
+                }
+                catch (InvalidOperationException) { } // A selected adapter changed during discovery.
+            }
+        }
+        catch (Exception error) when (error is OperationCanceledException or System.Net.NetworkInformation.NetworkInformationException or System.Net.Sockets.SocketException) { }
+        return null;
     }
 
     private void UpdateAutomaticDestination(string url)
@@ -113,7 +138,9 @@ public partial class MainViewModel
             var plan = plannedDestination;
             var automatic = string.Equals(requestedDestination, automaticDestination, StringComparison.Ordinal);
             var isFolder = Directory.Exists(requestedDestination);
-            var filename = automatic || isFolder ? await DownloadFilename.TryResolveAsync(source) : null;
+            var paths = DownloadAdapters?.ToArray() ?? [];
+            if (paths.Length == 0) { NewDownloadError = SelectAdaptersMessage; return; }
+            var filename = automatic || isFolder ? await ResolveSelectedFilenameAsync(source, paths) : null;
             if (requestedUrl != Url || requestedDestination != Destination || requestedCategory != Category)
             {
                 NewDownloadError = "The download fields changed. Review them and start again.";
@@ -126,8 +153,8 @@ public partial class MainViewModel
             if (File.Exists(destination)) { NewDownloadError = Text("DestinationExistsStatus"); return; }
             var job = new QueueJob
             {
-                Source = source, Destination = destination, UseSystemRoute = true,
-                Options = new DownloadOptions { Workers = workers, ExpectedSha256 = string.IsNullOrWhiteSpace(ExpectedSha256) ? null : ExpectedSha256.Trim() },
+                Source = source, Destination = destination, UseSystemRoute = false, Paths = paths,
+                Options = new DownloadOptions { Workers = Math.Max(workers, paths.Length), ExpectedSha256 = string.IsNullOrWhiteSpace(ExpectedSha256) ? null : ExpectedSha256.Trim() },
                 DailyWindow = DailyTransferWindow.Parse(WindowStart, WindowEnd, WindowOffset), Category = DownloadCategory.Normalize(Category),
                 QueueName = NewDownloadQueue, Priority = priorityValue, NotBefore = QueueScheduling.ParseStart(ScheduledStart)
             };

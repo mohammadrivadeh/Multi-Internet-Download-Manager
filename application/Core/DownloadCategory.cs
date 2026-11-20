@@ -15,6 +15,7 @@ public static class DownloadCategory
 
 public sealed record DesktopPreferences
 {
+    public List<QueuedPath>? DownloadAdapters { get; init; }
     public List<CategoryDownloadSettings> CategoryDefaults { get; init; } = [];
     public List<DownloadQueueSettings> Queues { get; init; } = [new()];
     public string? DestinationRoot { get; init; }
@@ -25,6 +26,11 @@ public sealed record DesktopPreferences
     public int MotionLevel { get; init; } = 2;
     public void Validate()
     {
+        if (DownloadAdapters is { } adapters &&
+            (adapters.Count > 128 || adapters.Any(path => path is null || string.IsNullOrWhiteSpace(path.AdapterId) ||
+                path.AdapterId.Length > 1024 || !System.Net.IPAddress.TryParse(path.SourceAddress, out _)) ||
+             adapters.Select(path => path.AdapterId).Distinct(StringComparer.OrdinalIgnoreCase).Count() != adapters.Count))
+            throw new ArgumentException("Invalid download adapter selection.");
         if (Workers is < 1 or > 128 || SpeedLimitKiB is < 0 or > 1048576 || Priority is < -10 or > 10
             || MotionLevel is < 0 or > 3)
             throw new ArgumentException("Invalid desktop defaults.");

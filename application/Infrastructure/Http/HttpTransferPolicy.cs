@@ -1,4 +1,5 @@
 using System.Net;
+using DownloadManager.Infrastructure.Diagnostics;
 
 namespace DownloadManager.Infrastructure.Http;
 
@@ -48,7 +49,10 @@ internal static class HttpTransferPolicy
             for (var hops = 0; ; hops++)
             {
                 deadline.Token.ThrowIfCancellationRequested();
+                if (DownloadPathTrace.Current is { } trace) current.Options.Set(DownloadPathTrace.RequestContext, trace.Detail);
                 var response = await client.SendAsync(current, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+                if (DownloadPathTrace.Current is { } path && !response.IsSuccessStatusCode)
+                    LocalDiagnostics.Trace("download-http-status", $"{path.Detail} status={(int)response.StatusCode}");
                 response.RequestMessage ??= current;
                 Uri receivedAt;
                 try { receivedAt = ResponseUri(response); }
@@ -84,8 +88,19 @@ internal static class HttpTransferPolicy
                 current = follow;
             }
         }
-        catch (OperationCanceledException) when (!token.IsCancellationRequested)
-        { throw new TimeoutException("Response headers or redirects timed out."); }
+        catch (OperationCanceledException ex)
+        {
+            if (DownloadPathTrace.Current is { } path)
+                LocalDiagnostics.Record("download-request-ended", ex, $"{path.Detail} phase=response-headers reason={(token.IsCancellationRequested ? "cancelled" : "timeout")}");
+            if (token.IsCancellationRequested) throw;
+            throw new TimeoutException("Response headers or redirects timed out.", ex);
+        }
+        catch (HttpRequestException ex)
+        {
+            if (DownloadPathTrace.Current is { } path)
+                LocalDiagnostics.Record("download-request-failed", ex, $"{path.Detail} phase=response-headers reason={ex.HttpRequestError}");
+            throw;
+        }
         finally { foreach (var follow in ownedRequests) follow.Dispose(); }
     }
 
@@ -94,6 +109,18 @@ internal static class HttpTransferPolicy
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(TimeSpan.FromSeconds(30));
         try { return await body.ReadAsync(buffer, deadline.Token); }
-        catch (OperationCanceledException) when (!token.IsCancellationRequested) { throw new TimeoutException("Response body became inactive."); }
+        catch (OperationCanceledException ex)
+        {
+            if (DownloadPathTrace.Current is { } path)
+                LocalDiagnostics.Record("download-read-ended", ex, $"{path.Detail} phase=response-body reason={(token.IsCancellationRequested ? "cancelled" : "timeout")}");
+            if (token.IsCancellationRequested) throw;
+            throw new TimeoutException("Response body became inactive.", ex);
+        }
+        catch (Exception ex) when (ex is IOException or HttpRequestException)
+        {
+            if (DownloadPathTrace.Current is { } path)
+                LocalDiagnostics.Record("download-read-failed", ex, $"{path.Detail} phase=response-body");
+            throw;
+        }
     }
 }

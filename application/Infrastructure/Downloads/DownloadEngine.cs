@@ -3,6 +3,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using DownloadManager.Core;
+using DownloadManager.Infrastructure.Diagnostics;
 using DownloadManager.Infrastructure.Http;
 using DownloadManager.Infrastructure.Persistence;
 using Microsoft.Win32.SafeHandles;
@@ -17,7 +18,8 @@ public sealed class DownloadEngine
     internal DownloadEngine(Action<string> deleteCheckpoint) => this.deleteCheckpoint = deleteCheckpoint;
 
     public async Task DownloadAsync(Uri source, string destination, IReadOnlyList<HttpClient> transports,
-        DownloadOptions? options = null, IProgress<DownloadProgress>? progress = null, CancellationToken cancellationToken = default, IReadOnlyList<long?>? transportSpeedLimits = null)
+        DownloadOptions? options = null, IProgress<DownloadProgress>? progress = null, CancellationToken cancellationToken = default, IReadOnlyList<long?>? transportSpeedLimits = null,
+        Guid? jobId = null, IReadOnlyList<int>? interfaceIndices = null)
     {
         options ??= new();
         options.Validate();
@@ -26,23 +28,33 @@ public sealed class DownloadEngine
         if (transports.Count == 0 || transports.Any(t => t is null)) throw new ArgumentException("At least one allowed transport is required.", nameof(transports));
         if (transports.Count > options.Workers) throw new ArgumentException("Set the worker count to at least the number of selected transports.", nameof(transports));
         if (transportSpeedLimits is not null && transportSpeedLimits.Count != transports.Count) throw new ArgumentException("Path policy count mismatch.");
+        if (interfaceIndices is not null && interfaceIndices.Count != transports.Count) throw new ArgumentException("Interface count mismatch.", nameof(interfaceIndices));
+        await using var trace = jobId is { } job ? new DownloadTrace(job, transports.Count, interfaceIndices) : null;
         var pathLimiters = Enumerable.Range(0, transports.Count).Select(i => transportSpeedLimits?[i] is { } rate ? new PayloadRateLimiter(rate) : null).ToArray();
         destination = Path.GetFullPath(destination);
         if (File.Exists(destination)) throw new IOException("Destination already exists; choose another filename.");
         var part = destination + ".part";
         var database = part + ".sqlite";
         progress?.Report(new(DownloadStage.Probing, 0, null, false));
-        var resource = await RetryAsync(() => ResourceProbe.ProbeAsync(transports[0], source, cancellationToken), options.RetryLimit, cancellationToken);
+        async Task<RemoteResource> ProbeAsync(int index)
+        {
+            using var scope = trace?[index].Enter();
+            return await ResourceProbe.ProbeAsync(transports[index], source, cancellationToken);
+        }
+        var resource = await RetryAsync(() => ProbeAsync(0), options.RetryLimit, cancellationToken, trace?[0]);
         if (!resource.CanSegment)
         {
+            using var scope = trace?[0].Enter();
+            if (trace is not null) LocalDiagnostics.Trace("download-mode", $"{trace[0].Detail} mode=sequential active_paths=1");
             await DownloadSequentialAsync(source, destination, part, database, transports[0], resource, options, progress, rateLimiter, pathLimiters[0], cancellationToken);
             return;
         }
         var length = resource.Length!.Value;
         // Every selected path must see exactly the same representation before combining bytes.
-        foreach (var transport in transports.Skip(1))
+        if (trace is not null) LocalDiagnostics.Trace("download-mode", $"job={jobId:N} mode=segmented eligible_paths={transports.Count}");
+        for (var index = 1; index < transports.Count; index++)
         {
-            var other = await RetryAsync(() => ResourceProbe.ProbeAsync(transport, source, cancellationToken), options.RetryLimit, cancellationToken);
+            var other = await RetryAsync(() => ProbeAsync(index), options.RetryLimit, cancellationToken, trace?[index]);
             if (other != resource) throw new InvalidDataException("Selected paths do not expose the same representation.");
         }
         if (File.Exists(part) && !File.Exists(database))
@@ -87,13 +99,15 @@ public sealed class DownloadEngine
             cancellationToken.ThrowIfCancellationRequested();
             if (completed != length || RandomAccess.GetLength(handle) != length) throw new InvalidDataException("Incomplete coverage.");
             progress?.Report(new(DownloadStage.Verifying, length, length, resumed));
-            var finalResource = await ResourceProbe.ProbeAsync(transports[0], source, cancellationToken);
+            var finalResource = await ProbeAsync(0);
             if (finalResource != resource) throw new InvalidDataException("The resource changed before finalization.");
             await VerifyHashAsync(handle, length, options.ExpectedSha256, cancellationToken);
             RandomAccess.FlushToDisk(handle);
 
             async Task WorkerAsync(int worker, HttpClient transport)
             {
+                var path = trace?[worker % transports.Count];
+                using var scope = path?.Enter();
                 long target = options.MinimumRangeBytes;
                 try
                 {
@@ -104,7 +118,7 @@ public sealed class DownloadEngine
                         if (range is null) return;
                         coverage.Start(worker, range.Length);
                         var watch = Stopwatch.StartNew();
-                        await RetryAsync(() => RangeTransfer.WriteAsync(transport, source, range, length, resource.ETag!, handle, stop.Token, rateLimiter, resource.EffectiveUri, prefix => ReportCoverage(coverage.Advance(worker, prefix), false), pathLimiters[worker % transports.Count]), options.RetryLimit, stop.Token);
+                        await RetryAsync(() => RangeTransfer.WriteAsync(transport, source, range, length, resource.ETag!, handle, stop.Token, rateLimiter, resource.EffectiveUri, prefix => ReportCoverage(coverage.Advance(worker, prefix), false), pathLimiters[worker % transports.Count]), options.RetryLimit, stop.Token, path);
                         var hash = await HashAsync(handle, range.Start, range.Length, stop.Token) ?? throw new EndOfStreamException();
                         await checkpoint.WaitAsync(stop.Token);
                         try
@@ -158,6 +172,7 @@ public sealed class DownloadEngine
                 int count;
                 while ((count = await HttpTransferPolicy.ReadAsync(body, buffer.AsMemory(0, Math.Min(rateLimiter?.ReadSize ?? buffer.Length, pathLimiter?.ReadSize ?? buffer.Length)), token)) != 0)
                 {
+                    DownloadPathTrace.Current?.Receive(count);
                     await PayloadRateLimiter.WaitBothAsync(rateLimiter, pathLimiter, count, token);
                     await RandomAccess.WriteAsync(handle, buffer.AsMemory(0, count), offset, token);
                     offset = checked(offset + count);
@@ -198,7 +213,7 @@ public sealed class DownloadEngine
         return Convert.ToHexString(hash.GetHashAndReset());
     }
 
-    private static async Task<T> RetryAsync<T>(Func<Task<T>> action, int retries, CancellationToken token)
+    private static async Task<T> RetryAsync<T>(Func<Task<T>> action, int retries, CancellationToken token, DownloadPathTrace? path)
     {
         for (var attempt = 0; ; attempt++)
         {
@@ -209,6 +224,7 @@ public sealed class DownloadEngine
                     : TimeSpan.FromMilliseconds(200 * (1 << attempt) + Random.Shared.Next(100));
                 // Do not retry sooner than a server delay that exceeds this operation's retry budget.
                 if (delay > TimeSpan.FromSeconds(30)) throw;
+                path?.Retry(ex, attempt + 2);
                 await Task.Delay(delay, token);
             }
         }

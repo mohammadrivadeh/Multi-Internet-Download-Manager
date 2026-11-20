@@ -9,6 +9,8 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        DispatcherUnhandledException += (_, args) =>
+            DownloadManager.Infrastructure.Diagnostics.LocalDiagnostics.Record("desktop-unhandled", args.Exception);
         AppMotion.Register();
         // The composition root owns desktop adapters and the protected queue session.
         var model = new MainViewModel(new DesktopServices(Dispatcher), new QueueSession());

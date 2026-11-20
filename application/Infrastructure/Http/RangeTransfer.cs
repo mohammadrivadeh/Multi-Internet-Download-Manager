@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Net;
 using System.Net.Http.Headers;
 using DownloadManager.Core;
+using DownloadManager.Infrastructure.Diagnostics;
 using DownloadManager.Infrastructure.Networking;
 using Microsoft.Win32.SafeHandles;
 
@@ -48,7 +49,11 @@ public static class RangeTransfer
             {
                 var count = await HttpTransferPolicy.ReadAsync(body, buffer.AsMemory(0, (int)Math.Min(Math.Min(rateLimiter?.ReadSize ?? buffer.Length, pathLimiter?.ReadSize ?? buffer.Length), range.Length - written)), cancellationToken);
                 if (count == 0)
+                {
+                    if (DownloadPathTrace.Current is { } trace) LocalDiagnostics.Trace("download-body-incomplete", $"{trace.Detail} expected={range.Length} received={written}");
                     throw new EndOfStreamException("The range body ended before the expected boundary.");
+                }
+                DownloadPathTrace.Current?.Receive(count);
                 await PayloadRateLimiter.WaitBothAsync(rateLimiter, pathLimiter, count, cancellationToken);
                 await RandomAccess.WriteAsync(destination, buffer.AsMemory(0, count), range.Start + written, cancellationToken);
                 written += count;

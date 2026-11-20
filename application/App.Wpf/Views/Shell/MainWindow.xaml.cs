@@ -158,6 +158,7 @@ public partial class MainWindow : Window
         await viewModel.InitializeAsync();
         if (!closing) AppMotion.Reveal(WindowSurface);
         await viewModel.RefreshCommand.ExecuteAsync(null);
+        if (!closing) await BalancerPanel.ScanOnceAsync();
     }
     private async void OnClosing(object? sender, CancelEventArgs e)
     {

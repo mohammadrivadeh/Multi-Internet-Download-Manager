@@ -177,21 +177,29 @@ public partial class MainViewModel
     [RelayCommand(CanExecute = nameof(CanRedownloadSelected))]
     private async Task RedownloadSelectedAsync()
     {
-        if (queue is null || SelectedJob?.Job is not { } previous || desktop.ChooseDestination() is not { } destination) return;
+        if (queue is null || SelectedJob?.Job is not { } previous) return;
         try
         {
+            var reserved = (await queue.SnapshotAsync())
+                .Where(item => item.Id == previous.Id || item.State is not (QueueJobState.Cancelled or QueueJobState.Completed))
+                .Select(item => Path.GetFullPath(item.Destination))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var suggestion = DestinationDirectory.SuggestFreshCopy(previous.Destination, reserved);
+            if (desktop.ChooseDestination(suggestion) is not { } destination) return;
             destination = Path.GetFullPath(destination);
-            if (string.Equals(destination, Path.GetFullPath(previous.Destination), StringComparison.OrdinalIgnoreCase) ||
-                File.Exists(destination) || File.Exists(destination + ".part") || File.Exists(destination + ".part.sqlite"))
+            if (reserved.Contains(destination) || !DestinationDirectory.IsFresh(destination))
             {
                 Status = "Choose a new destination for a fresh download.";
                 return;
             }
+            var paths = (DownloadAdapters ?? previous.Paths).ToArray();
+            if (paths.Length == 0) { Status = SelectAdaptersMessage; return; }
             var job = previous with
             {
                 Id = Guid.NewGuid(), Destination = destination, State = QueueJobState.Queued,
                 CompletedBytes = 0, TotalBytes = null, FailureCode = null, CheckpointCleanupPending = false, NotBefore = null,
-                UseSystemRoute = true, Paths = [], Options = previous.Options with { BytesPerSecondLimit = null }
+                UseSystemRoute = false, Paths = paths,
+                Options = previous.Options with { Workers = Math.Max(previous.Options.Workers, paths.Length), BytesPerSecondLimit = null }
             };
             await queue.EnqueueAsync(job);
             await RefreshJobsAsync();

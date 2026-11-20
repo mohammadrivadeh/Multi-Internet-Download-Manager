@@ -8,6 +8,9 @@ using System.Windows;
 using System.Windows.Controls;
 using DownloadManager.NetworkBalancer;
 using DownloadManager.Infrastructure.Networking;
+using DownloadManager.Infrastructure.Diagnostics;
+using DownloadManager.App.ViewModels;
+using DownloadManager.Core;
 
 namespace DownloadManager.App.Views.Sections;
 
@@ -64,9 +67,9 @@ public partial class BalancerView : UserControl
             await ScanOnceAsync();
     }
 
-    private async Task ScanOnceAsync()
+    internal async Task ScanOnceAsync()
     {
-        if (IsVisible && !scanned)
+        if (IsVisible && !scanned && DataContext is MainViewModel { IsReady: true })
         {
             scanned = true;
             await ScanAsync();
@@ -77,7 +80,7 @@ public partial class BalancerView : UserControl
 
     private async Task ScanAsync()
     {
-        if (scan is not null) return;
+        if (scan is not null || DataContext is not MainViewModel { IsReady: true } model) return;
         scanned = true;
         using var cancellation = new CancellationTokenSource();
         scan = cancellation;
@@ -88,39 +91,45 @@ public partial class BalancerView : UserControl
         try
         {
             var adapters = await AdapterDiagnostics.ScanAsync(cancellation.Token);
+            LocalDiagnostics.Trace("adapter-scan-result", $"detected={adapters.Count} eligible={adapters.Count(item => string.IsNullOrEmpty(item.Reason))}");
             var paths = await Task.Run(catalog.Discover, cancellation.Token);
-            var previous = adapterRows?.Where(row => row.Online)
-                .ToDictionary(row => (row.Adapter.Index, row.Adapter.Name), row => row.Selected);
+            var previous = model.DownloadAdapters;
             var rows = new List<AdapterRow>();
             foreach (var adapter in adapters)
             {
                 AdapterSample? sample = null;
                 string? family = null;
+                NetworkPath? downloadPath = null;
                 if (string.IsNullOrEmpty(adapter.Reason))
                 {
                     ScanStatus.Text = $"Testing {adapter.Name}…";
                     foreach (var path in TestPaths(adapter, paths))
                     {
+                        downloadPath ??= path;
                         var result = await Task.Run(() => AdapterSample.MeasureAsync(path, catalog, cancellation.Token), cancellation.Token);
                         if (result is null || (sample is not null && result.MegabitsPerSecond is null)) continue;
                         sample = result;
+                        downloadPath = path;
                         family = path.SourceAddress.AddressFamily == AddressFamily.InterNetwork ? "IPv4" : "IPv6";
                         if (sample.MegabitsPerSecond.HasValue) break;
                     }
                 }
-                var selected = sample is not null && previous?.GetValueOrDefault((adapter.Index, adapter.Name), true) != false;
-                rows.Add(new AdapterRow(adapter, sample, family, selected));
+                var selected = downloadPath is not null &&
+                    (previous?.Any(saved => string.Equals(saved.AdapterId, downloadPath.AdapterId, StringComparison.OrdinalIgnoreCase)) ?? sample is not null);
+                rows.Add(new AdapterRow(adapter, sample, family, downloadPath, selected));
             }
             adapterRows = rows.ToArray();
-            AdapterTable.ItemsSource = rows.Where(row => row.Online).ToArray();
-            OtherAdapterTable.ItemsSource = rows.Where(row => !row.Online).ToArray();
-            ScanStatus.Text = $"{rows.Count(row => row.Online)} online · {rows.Count(row => !row.Online)} other";
+            AdapterTable.ItemsSource = rows.Where(row => row.Eligible).ToArray();
+            OtherAdapterTable.ItemsSource = rows.Where(row => !row.Eligible).ToArray();
+            ScanStatus.Text = $"{rows.Count(row => row.Online)} verified · {rows.Count(row => row.Eligible && !row.Online)} unverified";
             UpdateSelectionSummary();
+            if (previous is not null || rows.Any(row => row.Selected)) await PersistSelectionAsync(model);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         catch (Exception error) when (error is IOException or InvalidDataException or Win32Exception
                                       or JsonException or TimeoutException or NetworkInformationException)
         {
+            DownloadManager.Infrastructure.Diagnostics.LocalDiagnostics.Record("adapter-scan", error);
             ScanStatus.Text = error.Message;
         }
         finally
@@ -142,14 +151,40 @@ public partial class BalancerView : UserControl
         }
     }
 
-    private void AdapterSelectionChanged(object sender, RoutedEventArgs e) => UpdateSelectionSummary();
+    private async void AdapterSelectionChanged(object sender, RoutedEventArgs e)
+    {
+        UpdateSelectionSummary();
+        if (DataContext is MainViewModel model)
+            await PersistSelectionAsync(model);
+    }
+
+    private async Task PersistSelectionAsync(MainViewModel model)
+    {
+        if (adapterRows is null) return;
+        var visible = adapterRows.Where(row => row.Path is not null).Select(row => row.Path!.AdapterId)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var selection = (model.DownloadAdapters ?? []).Where(saved => !visible.Contains(saved.AdapterId))
+            .Concat(adapterRows.Where(row => row.Selected && row.Path is not null)
+                .Select(row => new QueuedPath(row.Path!.AdapterId, row.Path.SourceAddress.ToString()))).ToList();
+        if (model.DownloadAdapters?.SequenceEqual(selection) == true) return;
+        AdapterTable.IsEnabled = false;
+        try
+        {
+            if (await model.SaveDownloadAdaptersAsync(selection) is { } error)
+            {
+                ScanStatus.Text = error;
+                scanned = false;
+            }
+        }
+        finally { AdapterTable.IsEnabled = capture is null && scan is null; }
+    }
 
     private void UpdateSelectionSummary()
     {
-        var selected = adapterRows?.Where(row => row.Online && row.Selected).ToArray() ?? [];
+        var selected = adapterRows?.Where(row => row.Eligible && row.Selected).ToArray() ?? [];
         if (selected.Length == 0)
         {
-            SelectionSummary.Text = "Select online adapters to estimate combined download speed.";
+            SelectionSummary.Text = "Select adapters to use for downloads.";
             return;
         }
         var measured = selected.Where(row => row.Sample?.MegabitsPerSecond is not null).ToArray();
@@ -164,7 +199,7 @@ public partial class BalancerView : UserControl
 #if CAPTURE_PREVIEW
         if (capture is not null || scan is not null)
             return;
-        var selected = adapterRows?.Where(row => row.Online && row.Selected)
+        var selected = adapterRows?.Where(row => row.Eligible && row.Selected)
             .Select(row => new CaptureAdapterChoice(row.Adapter.Index, row.Adapter.Name)).ToArray();
         if (selected is not { Length: > 0 })
         {
@@ -175,7 +210,9 @@ public partial class BalancerView : UserControl
         ScanButton.IsEnabled = false;
         AdapterTable.IsEnabled = false;
         CaptureStatus.Text = "Waiting for Windows approval and capture startup…";
-        var session = new CaptureSession(Path.Combine(AppContext.BaseDirectory, "balancer", "desktop-capture.exe"), selected);
+        LocalDiagnostics.Trace("capture-start", $"interfaces={string.Join(',', selected.Select(item => item.Index))}");
+        var session = new CaptureSession(Path.Combine(AppContext.BaseDirectory, "balancer", "desktop-capture.exe"), selected,
+            stats => LocalDiagnostics.Trace("capture-interface", stats));
         capture = session;
         try
         {
@@ -185,6 +222,7 @@ public partial class BalancerView : UserControl
                 StopCaptureButton.IsEnabled = true;
                 ScanButton.IsEnabled = true;
                 CaptureStatus.Text = "Capture host is running.";
+                LocalDiagnostics.Trace("capture-ready");
             }
             else
             {
@@ -192,10 +230,12 @@ public partial class BalancerView : UserControl
             }
             await session.Completion;
             CaptureStatus.Text = "Capture host stopped.";
+            LocalDiagnostics.Trace("capture-stopped");
         }
         catch (Exception error) when (error is IOException or Win32Exception or TimeoutException
                                       or UnauthorizedAccessException or InvalidOperationException)
         {
+            DownloadManager.Infrastructure.Diagnostics.LocalDiagnostics.Record("capture-session", error);
             CaptureStatus.Text = error is Win32Exception { NativeErrorCode: 1223 }
                 ? "Windows approval was canceled."
                 : error.Message;
@@ -243,14 +283,17 @@ public partial class BalancerView : UserControl
 
     public void CancelNetworkTests() => scan?.Cancel();
 
-    private sealed class AdapterRow(DetectedAdapter adapter, AdapterSample? sample, string? family, bool selected)
+    private sealed class AdapterRow(DetectedAdapter adapter, AdapterSample? sample, string? family, NetworkPath? path, bool selected)
     {
         public DetectedAdapter Adapter { get; } = adapter;
         public AdapterSample? Sample { get; } = sample;
+        public NetworkPath? Path { get; } = path;
+        public bool CanSelect => Path is not null;
         public bool Online => Sample is not null;
+        public bool Eligible => string.IsNullOrEmpty(Adapter.Reason);
         public bool Selected { get; set; } = selected;
         public string Latency => Sample is { } result ? $"{result.Latency.TotalMilliseconds:N0} ms · {family}" : "—";
-        public string Download => Sample?.MegabitsPerSecond is { } speed ? $"{speed:N1} Mbps" : "Unavailable";
+        public string Download => Sample?.MegabitsPerSecond is { } speed ? $"{speed:N1} Mbps" : Online ? "Unavailable" : "HTTPS unverified";
         public string Status => string.IsNullOrEmpty(Adapter.Reason) ? "Cloudflare HTTPS test failed" : Adapter.Reason;
     }
 }

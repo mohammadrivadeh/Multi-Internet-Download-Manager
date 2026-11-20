@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
+using DownloadManager.Infrastructure.Diagnostics;
 
 namespace DownloadManager.Infrastructure.Networking;
 
@@ -13,19 +14,24 @@ public sealed record AdapterSample(TimeSpan Latency, double? MegabitsPerSecond, 
     public static async Task<AdapterSample?> MeasureAsync(NetworkPath path, INetworkPathCatalog catalog, CancellationToken cancellationToken)
     {
         TimeSpan? latency = null;
+        var route = $"interface={path.InterfaceIndex} family={path.SourceAddress.AddressFamily}";
+        LocalDiagnostics.Trace("adapter-test-start", route);
         try
         {
-            using var session = new NetworkPathSession(path, catalog);
-            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, session.Invalidated);
+            var connector = new WindowsPathConnector(path, catalog);
+            using var client = new HttpClient(PathProbe.CreateHandler(connector.ConnectAsync)) { Timeout = Timeout.InfiniteTimeSpan };
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             deadline.CancelAfter(TimeSpan.FromSeconds(5));
             var started = Stopwatch.GetTimestamp();
-            using (var response = await SendAsync(session.Client, LatencyUrl, deadline.Token).ConfigureAwait(false))
+            using (var response = await SendAsync(client, LatencyUrl, deadline.Token).ConfigureAwait(false))
             {
                 response.EnsureSuccessStatusCode();
                 latency = Stopwatch.GetElapsedTime(started);
+                LocalDiagnostics.Trace("adapter-https-response", $"{route} status={(int)response.StatusCode} latency_ms={latency.Value.TotalMilliseconds:F0}");
             }
 
-            using var sample = await SendAsync(session.Client, SampleUrl, deadline.Token).ConfigureAwait(false);
+            connector.EnsureCurrent();
+            using var sample = await SendAsync(client, SampleUrl, deadline.Token).ConfigureAwait(false);
             sample.EnsureSuccessStatusCode();
             if (sample.Content.Headers.ContentEncoding.Any(encoding => encoding != "identity"))
                 return new(latency.Value, null, 0);
@@ -40,12 +46,15 @@ public sealed record AdapterSample(TimeSpan Latency, double? MegabitsPerSecond, 
                 bytes += read;
             }
             var elapsed = Stopwatch.GetElapsedTime(started).TotalSeconds;
+            LocalDiagnostics.Trace("adapter-speed-result", $"{route} status={(int)sample.StatusCode} bytes={bytes} seconds={elapsed:F3}");
             return new(latency.Value, bytes == SampleSize && elapsed > 0 ? bytes * 8 / elapsed / 1_000_000 : null, bytes);
         }
         catch (Exception error) when (error is HttpRequestException or IOException or InvalidOperationException
             or System.Net.Sockets.SocketException or System.Net.NetworkInformation.NetworkInformationException or OperationCanceledException)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            LocalDiagnostics.Record("adapter-test", error,
+                $"interface={path.InterfaceIndex} family={path.SourceAddress.AddressFamily} phase={(latency is null ? "reachability" : "speed")}");
             return latency is { } measured ? new(measured, null, 0) : null;
         }
     }

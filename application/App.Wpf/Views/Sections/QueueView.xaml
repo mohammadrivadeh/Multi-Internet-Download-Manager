@@ -107,7 +107,17 @@
                     <DataGridTemplateColumn Header="{DynamicResource ProgressLabel}" Width="2*" MinWidth="150">
                         <DataGridTemplateColumn.CellTemplate><DataTemplate><StackPanel VerticalAlignment="Center" Margin="12,4"><ProgressBar Value="{Binding ProgressPercent, Mode=OneWay}" Maximum="100" Height="7"/><TextBlock Text="{Binding ProgressDisplay}" TextAlignment="Center" FontSize="{DynamicResource App.Font.Small}" Foreground="{DynamicResource App.TextMuted}" Margin="0,4,0,0"/></StackPanel></DataTemplate></DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTextColumn Header="{DynamicResource StateColumn}" Binding="{Binding State}" Width="*" MinWidth="95" ElementStyle="{StaticResource QueueCellText}"/>
+                    <DataGridTextColumn Header="{DynamicResource StateColumn}" Binding="{Binding State}" Width="*" MinWidth="95">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource QueueCellText}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Job.State}" Value="Failed">
+                                        <Setter Property="ToolTip" Value="{Binding Failure}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
                     <DataGridTextColumn Header="{DynamicResource CategoryLabel}" Binding="{Binding Category}" Width="*" MinWidth="95" ElementStyle="{StaticResource QueueCellText}"/>
                     <DataGridTextColumn Header="{DynamicResource SizeColumn}" Binding="{Binding SizeDisplay}" Width="*" MinWidth="82" ElementStyle="{StaticResource QueueCellText}"/>
                 </DataGrid.Columns>

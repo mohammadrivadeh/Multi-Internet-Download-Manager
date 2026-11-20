@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using DownloadManager.Infrastructure.Networking;
+using DownloadManager.Infrastructure.Diagnostics;
 
 namespace DownloadManager.Infrastructure.Http;
 
@@ -15,7 +16,10 @@ internal static class ResourceProbe
         { Version = HttpVersion.Version11, VersionPolicy = HttpVersionPolicy.RequestVersionExact };
         request.Headers.Range = new RangeHeaderValue(0, 0);
         request.Headers.AcceptEncoding.ParseAdd("identity");
+        var path = DownloadPathTrace.Current?.Detail;
+        LocalDiagnostics.Trace("download-http-probe", $"{path} range=0-0");
         using var response = await HttpTransferPolicy.SendAsync(client, request, token);
+        LocalDiagnostics.Trace("download-http-response", $"{path} status={(int)response.StatusCode} range={response.Content.Headers.ContentRange is not null} validator={response.Headers.ETag is not null}");
         if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable && response.Content.Headers.ContentRange?.Length == 0)
             return new(0, null, false, HttpTransferPolicy.ResponseUri(response));
         HttpTransferPolicy.RequireSuccess(response);

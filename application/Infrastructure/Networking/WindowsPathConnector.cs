@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using DownloadManager.Infrastructure.Diagnostics;
 
 namespace DownloadManager.Infrastructure.Networking;
 
@@ -28,9 +29,21 @@ internal sealed class WindowsPathConnector(NetworkPath path, INetworkPathCatalog
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException("Explicit interface binding requires Windows.");
         EnsureCurrent();
-        var addresses = await Dns.GetHostAddressesAsync(context.DnsEndPoint.Host, cancellationToken);
+        var family = path.SourceAddress.AddressFamily;
+        var route = $"interface={path.InterfaceIndex} family={family}";
+        if (context.InitialRequestMessage.Options.TryGetValue(DownloadPathTrace.RequestContext, out var detail))
+            route = $"{detail} {route}";
+        LocalDiagnostics.Trace("dns-start", route);
+        IPAddress[] addresses;
+        try { addresses = await Dns.GetHostAddressesAsync(context.DnsEndPoint.Host, family, cancellationToken); }
+        catch (Exception error) when (error is SocketException or OperationCanceledException)
+        {
+            LocalDiagnostics.Record("dns-failed", error, route);
+            throw;
+        }
+        LocalDiagnostics.Trace("dns-result", $"{route} addresses={addresses.Length}");
         Exception? lastFailure = null;
-        foreach (var destination in addresses.Where(a => a.AddressFamily == path.SourceAddress.AddressFamily).Take(16))
+        foreach (var destination in addresses.Take(16))
         {
             cancellationToken.ThrowIfCancellationRequested();
             EnsureCurrent();
@@ -45,12 +58,20 @@ internal sealed class WindowsPathConnector(NetworkPath path, INetworkPathCatalog
                 socket.Bind(new IPEndPoint(path.SourceAddress, 0));
                 await socket.ConnectAsync(new IPEndPoint(destination, context.DnsEndPoint.Port), cancellationToken);
                 EnsureCurrent();
+                LocalDiagnostics.Trace("tcp-connected", route);
                 return new NetworkStream(socket, ownsSocket: true);
             }
             catch (SocketException ex)
             {
                 socket.Dispose();
                 lastFailure = ex;
+                LocalDiagnostics.Record("tcp-connect-failed", ex, route);
+            }
+            catch (OperationCanceledException ex)
+            {
+                socket.Dispose();
+                LocalDiagnostics.Record("tcp-connect-cancelled", ex, route);
+                throw;
             }
             catch
             {

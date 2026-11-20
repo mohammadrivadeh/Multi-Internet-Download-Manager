@@ -56,7 +56,8 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
             RequireWritable();
             if (jobs.Count >= 1000) throw new InvalidOperationException("Remove terminal history before adding more jobs.");
             var job = request with { Destination = Path.GetFullPath(request.Destination), CreatedAt = time.GetUtcNow(), State = QueueJobState.Queued,
-                CompletedBytes = 0, TotalBytes = null, FailureCode = null, Category = DownloadCategory.Normalize(request.Category), Paths = Array.AsReadOnly(request.Paths.ToArray()) };
+                CompletedBytes = 0, TotalBytes = null, FailureCode = null, ResumeDifferences = CheckpointDifferences.None,
+                Category = DownloadCategory.Normalize(request.Category), Paths = Array.AsReadOnly(request.Paths.ToArray()) };
             job.Validate();
             if (jobs.ContainsKey(job.Id)) throw new InvalidOperationException("Job identity already exists.");
             if (jobs.Values.Any(j => j.State is not (QueueJobState.Cancelled or QueueJobState.Completed)
@@ -237,20 +238,33 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
             }
             finally { gate.Release(); }
             DownloadProgress? latest = null;
+            DownloadManager.Infrastructure.Diagnostics.LocalDiagnostics.Trace("download-start",
+                $"job={job.Id:N} route={(job.UseSystemRoute ? "system" : "bound")} paths={job.Paths.Count} workers={job.Options.Workers}");
             var progressLock = new object();
             var reporter = new CallbackProgress(value =>
             {
-                lock (progressLock) latest = value;
+                lock (progressLock)
+                {
+                    if (latest?.Stage != value.Stage)
+                        DownloadManager.Infrastructure.Diagnostics.LocalDiagnostics.Trace("download-stage",
+                            $"job={job.Id:N} stage={value.Stage} bytes={value.CompletedBytes} total={value.TotalBytes}");
+                    latest = value;
+                }
                 onProgress?.Invoke(job.Id, value);
             });
             var terminal = QueueJobState.Completed;
             string? failure = null;
+            var resumeDifferences = CheckpointDifferences.None;
             try { await executor.ExecuteAsync(job, reporter, active.Token); }
             catch (TransferWindowClosedException) { terminal = active.Token.IsCancellationRequested ? QueueJobState.Paused : QueueJobState.Queued; }
             catch (OperationCanceledException) { terminal = QueueJobState.Paused; }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
                 terminal = QueueJobState.Failed;
+                if (ex is InvalidDataException && ex.Data[nameof(CheckpointDifferences)] is CheckpointDifferences changed)
+                    resumeDifferences = changed;
+                var reason = resumeDifferences == CheckpointDifferences.None ? "" : $" checkpoint_mismatch={resumeDifferences.ToString().Replace(", ", "|")}";
+                DownloadManager.Infrastructure.Diagnostics.LocalDiagnostics.Record("download-failed", ex, $"job={job.Id:N} stage={latest?.Stage}{reason}");
                 failure = ex switch
                 {
                     InvalidDataException => "Validation", HttpRequestException or HttpIOException or EndOfStreamException => "Network",
@@ -266,7 +280,7 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
                     terminal = requested;
                 lock (progressLock)
                     job = job.Transition(terminal) with { CompletedBytes = latest?.CompletedBytes ?? job.CompletedBytes, TotalBytes = latest?.TotalBytes ?? job.TotalBytes,
-                        CheckpointCleanupPending = latest?.CheckpointCleanupPending ?? false, FailureCode = failure };
+                        CheckpointCleanupPending = latest?.CheckpointCleanupPending ?? false, FailureCode = failure, ResumeDifferences = resumeDifferences };
                 jobs[job.Id] = job; pendingWrites[job.Id] = job;
                 store.Save(job); pendingWrites.Remove(job.Id);
             }

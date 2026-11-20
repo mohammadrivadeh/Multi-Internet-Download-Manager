@@ -3,6 +3,23 @@ namespace DownloadManager.Infrastructure.Persistence;
 
 public static class DestinationDirectory
 {
+    public static string SuggestFreshCopy(string original, IReadOnlySet<string> reserved)
+    {
+        var directory = Path.GetDirectoryName(Path.GetFullPath(original))!;
+        var stem = Path.GetFileNameWithoutExtension(original);
+        var extension = Path.GetExtension(original);
+        for (var number = 1; ; number++)
+        {
+            var candidate = Path.Combine(directory, $"{stem} ({number}){extension}");
+            if (!reserved.Contains(candidate) && IsFresh(candidate)) return candidate;
+        }
+    }
+
+    public static bool IsFresh(string path) =>
+        !Path.Exists(path) && !Path.Exists(path + ".part") && !Path.Exists(path + ".part.sqlite")
+        && !Path.Exists(path + ".part.sqlite-wal") && !Path.Exists(path + ".part.sqlite-shm")
+        && !Path.Exists(path + ".part.sqlite-journal");
+
     public static void CreateFor(PlannedDestination plan)
     {
         // Revalidate the plan rather than trusting caller-constructed path strings.

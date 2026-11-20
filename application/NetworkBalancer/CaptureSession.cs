@@ -18,8 +18,8 @@ public sealed class CaptureSession
     private readonly CancellationTokenSource stop = new();
     private readonly TaskCompletionSource ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public CaptureSession(string executable, IReadOnlyList<CaptureAdapterChoice> adapters)
-        => Completion = RunAsync(executable, adapters.ToArray());
+    public CaptureSession(string executable, IReadOnlyList<CaptureAdapterChoice> adapters, Action<string>? onStatistics = null)
+        => Completion = RunAsync(executable, adapters.ToArray(), onStatistics);
 
     public Task Ready => ready.Task;
     public Task Completion { get; }
@@ -43,7 +43,7 @@ public sealed class CaptureSession
         return start;
     }
 
-    private async Task RunAsync(string executable, IReadOnlyList<CaptureAdapterChoice> adapters)
+    private async Task RunAsync(string executable, IReadOnlyList<CaptureAdapterChoice> adapters, Action<string>? onStatistics)
     {
         try
         {
@@ -71,7 +71,8 @@ public sealed class CaptureSession
                 {
                     ready.TrySetResult();
                     // An EOF after READY is an unexpected exit, even if its process exit code is zero.
-                    result = await reader.ReadLineAsync().ConfigureAwait(false);
+                    while ((result = await reader.ReadLineAsync().ConfigureAwait(false))?.StartsWith("STATS ", StringComparison.Ordinal) == true)
+                        onStatistics?.Invoke(result[6..]);
                 }
                 if (result != "STOPPED")
                     ThrowProtocolError(result);

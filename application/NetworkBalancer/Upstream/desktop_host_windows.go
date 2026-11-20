@@ -160,6 +160,18 @@ func runCapture(pipe io.ReadWriter, selections []string) error {
 				return fmt.Errorf("no safe selected adapter remains or Windows could not verify it; capture was stopped")
 			}
 			scheduler.Update(current)
+			for _, link := range scheduler.Snapshot() {
+				for _, adapter := range current {
+					if adapter.Name != link.Name {
+						continue
+					}
+					if _, err := fmt.Fprintf(pipe, "STATS interface=%d active=%d total=%d failed=%d received=%d sent=%d receive_bps=%.0f send_bps=%.0f\n",
+						adapter.Index, link.Active, link.Total, link.Failed, link.BytesIn, link.BytesOut, link.RateIn, link.RateOut); err != nil {
+						return err
+					}
+					break
+				}
+			}
 		}
 	}
 }

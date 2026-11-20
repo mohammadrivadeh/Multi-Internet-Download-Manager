@@ -4,24 +4,47 @@ namespace DownloadManager.App.ViewModels;
 public partial class MainViewModel
 {
     private DesktopPreferences savedPreferences = new();
+    private readonly SemaphoreSlim preferenceWrites = new(1, 1);
+
+    internal IReadOnlyList<QueuedPath>? DownloadAdapters => savedPreferences.DownloadAdapters;
+    internal const string SelectAdaptersMessage = "Select a connection in Network Balancer before starting the download.";
+
+    internal async Task<string?> SaveDownloadAdaptersAsync(List<QueuedPath> selection)
+    {
+        if (!IsReady || !preferencesWritable) return Text("PreferencesLoadError");
+        try
+        {
+            await UpdatePreferencesAsync(current => current with { DownloadAdapters = selection });
+            return null;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { return Text("PreferencesSaveError"); }
+    }
+
+    private async Task UpdatePreferencesAsync(Func<DesktopPreferences, DesktopPreferences> update)
+    {
+        await preferenceWrites.WaitAsync();
+        try
+        {
+            var updated = update(savedPreferences);
+            await session.SavePreferencesAsync(updated);
+            savedPreferences = updated;
+        }
+        finally { preferenceWrites.Release(); }
+    }
 
     internal int MotionLevel => savedPreferences.MotionLevel;
 
     internal async Task<string?> SaveMotionLevelAsync(int level)
     {
         if (!IsReady || !preferencesWritable) return Text("PreferencesLoadError");
-        var updated = CapturePreferences() with { MotionLevel = level };
         try
         {
-            await session.SavePreferencesAsync(updated);
-            savedPreferences = updated;
+            await UpdatePreferencesAsync(current => current with { MotionLevel = level });
             Presentation.AppMotion.Level = level;
             return null;
         }
         catch (Exception ex) when (ex is not OutOfMemoryException) { return Text("PreferencesSaveError"); }
     }
-
-    private DesktopPreferences CapturePreferences() => savedPreferences with { Queues = Queues.ToList() };
 
     internal CategoryDownloadSettings GetCategoryDefaults(string name) => savedPreferences.DefaultsFor(name);
 
@@ -31,14 +54,12 @@ public partial class MainViewModel
         try
         {
             settings.Validate();
-            var updated = CapturePreferences() with
+            await UpdatePreferencesAsync(current => current with
             {
-                CategoryDefaults = savedPreferences.CategoryDefaults
+                CategoryDefaults = current.CategoryDefaults
                     .Where(item => !string.Equals(item.Category, settings.Category, StringComparison.OrdinalIgnoreCase))
                     .Append(settings).ToList()
-            };
-            await session.SavePreferencesAsync(updated);
-            savedPreferences = updated;
+            });
             await RefreshJobsAsync();
             return null;
         }
@@ -63,7 +84,7 @@ public partial class MainViewModel
             var parallelism = string.Equals(concurrency.Trim(), "All", StringComparison.OrdinalIgnoreCase) ? 0 : int.Parse(concurrency);
             var updated = old with { MaxConcurrentDownloads = parallelism, StartTime = start.Trim(), StopTime = stop.Trim() };
             updated.Validate();
-            await session.SavePreferencesAsync(CapturePreferences() with { Queues = Queues.Select(q => q == old ? updated : q).ToList() });
+            await UpdatePreferencesAsync(current => current with { Queues = Queues.Select(q => q == old ? updated : q).ToList() });
             Queues[Queues.IndexOf(old)] = updated;
             return null;
         }
@@ -81,7 +102,7 @@ public partial class MainViewModel
             if (Queues.Any(q => string.Equals(q.Name, name, StringComparison.OrdinalIgnoreCase))) { Status = Text("QueueNameExistsStatus"); return; }
             var item = new DownloadQueueSettings { Name = name };
             var updated = Queues.Append(item).ToList();
-            await session.SavePreferencesAsync(CapturePreferences() with { Queues = updated });
+            await UpdatePreferencesAsync(current => current with { Queues = updated });
             Queues.Add(item); NewQueueName = ""; SelectedQueueName = name; MoveTargetQueueName = name; Status = string.Format(Text("QueueCreatedStatus"), name);
         }
         catch (ArgumentException) { Status = Text("QueueNameInputError"); }
@@ -102,7 +123,7 @@ public partial class MainViewModel
             await Task.Run(() => queue.RenameQueueAsync(old.Name, name));
             var updated = old with { Name = name };
             var settings = Queues.Select(q => q == old ? updated : q).ToList();
-            try { await session.SavePreferencesAsync(CapturePreferences() with { Queues = settings }); }
+            try { await UpdatePreferencesAsync(current => current with { Queues = settings }); }
             catch { await Task.Run(() => queue.RenameQueueAsync(name, old.Name)); throw; }
             Queues[Queues.IndexOf(old)] = updated; NewQueueName = ""; SelectedQueueName = name; MoveTargetQueueName = name;
             if (startedQueues.Remove(old.Name)) startedQueues.Add(name);
@@ -130,7 +151,7 @@ public partial class MainViewModel
             }
             await Task.Run(() => queue.MoveQueueJobsAsync(selected.Name, QueueJob.MainQueue));
             var settings = Queues.Where(q => q != selected).ToList();
-            await session.SavePreferencesAsync(CapturePreferences() with { Queues = settings });
+            await UpdatePreferencesAsync(current => current with { Queues = settings });
             pausedQueues.Remove(selected.Name);
             startedQueues.Remove(selected.Name);
             Queues.Remove(selected); SelectedQueueName = QueueJob.MainQueue; MoveTargetQueueName = QueueJob.MainQueue;

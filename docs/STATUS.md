@@ -29,6 +29,7 @@ Updated 2026-11-20. [ADR 0018](decisions/0018-windows-network-balancer.md) recor
 - The Downloads toolbar filters by download status. Select multiple reveals per-row checkboxes and a checkbox for all visible downloads. Separate dialogs let users choose a destination queue or category for the selected rows.
 - Adapter inventory uses .NET directly and refreshes after Windows address changes. The capture host checks egress flags through IP Helper and refreshes the scheduler with eligible adapters from the original selection. Choose additional adapters when starting another capture session. Live throughput and Task Manager behavior remain to be verified.
 - Automatic download names prefer the server's Content-Disposition metadata and preserve known extensions from redirects or the original URL. Manual filenames take precedence. SQLite checkpoint files remain internal to incomplete segmented downloads.
+- An adapter with a usable address and gateway can be selected manually when the HTTPS test cannot verify it. The bounded desktop log in `Logs/diagnostics.log` beside the application records adapter tests, DNS and TCP results, download probes and stages, and capture counters by interface. The log excludes download URLs and filesystem destinations. Capture counters include all traffic seen by the host.
 
 ## Downloader
 

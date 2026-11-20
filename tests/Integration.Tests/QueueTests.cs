@@ -149,6 +149,64 @@ public class QueueTests
         Assert.Equal(QueueJobState.Queued, store.Jobs[failed.Id].State);
     }
 
+    [Theory]
+    [InlineData(CheckpointDifferences.Source)]
+    [InlineData(CheckpointDifferences.Length)]
+    [InlineData(CheckpointDifferences.ETag)]
+    [InlineData(CheckpointDifferences.Source | CheckpointDifferences.Length | CheckpointDifferences.ETag)]
+    public async Task ResumeMismatchIdentifiesChangedFieldsAndPreservesVerifiedRanges(CheckpointDifferences changed)
+    {
+        var directory = Directory.CreateTempSubdirectory();
+        try
+        {
+            var target = Path.Combine(directory.FullName, "file.zip");
+            var sidecar = target + ".part.sqlite";
+            var range = new ByteRange(0, 7);
+            using (var checkpoint = new CheckpointStore(sidecar, "source", 8, "v1"))
+                checkpoint.Save(range, "range hash");
+            var store = new MemoryStore();
+            var executor = new FakeExecutor((_, _, _) =>
+            {
+                using var checkpoint = new CheckpointStore(sidecar,
+                    changed.HasFlag(CheckpointDifferences.Source) ? "new source" : "source",
+                    changed.HasFlag(CheckpointDifferences.Length) ? 16 : 8,
+                    changed.HasFlag(CheckpointDifferences.ETag) ? "v2" : "v1");
+                return Task.CompletedTask;
+            });
+            var queue = new QueueCoordinator(store, executor);
+            await queue.InitializeAsync();
+            var job = await queue.EnqueueAsync(Job(target));
+            await queue.RunReadyAsync();
+
+            Assert.Equal("Validation", store.Jobs[job.Id].FailureCode);
+            Assert.Equal(changed, store.Jobs[job.Id].ResumeDifferences);
+            using (var original = new CheckpointStore(sidecar, "source", 8, "v1"))
+                Assert.Equal((range, "range hash"), Assert.Single(original.Load()));
+
+            await queue.ChangeStateAsync(job.Id, QueueJobState.Queued);
+            Assert.Equal(CheckpointDifferences.None, store.Jobs[job.Id].ResumeDifferences);
+        }
+        finally { directory.Delete(true); }
+    }
+
+    [Fact]
+    public void FreshDownloadSuggestionPreservesPartialFilesAndQueuedDestinations()
+    {
+        var directory = Directory.CreateTempSubdirectory();
+        try
+        {
+            string FilePath(string name) => Path.Combine(directory.FullName, name);
+            var original = FilePath("report.zip");
+            File.WriteAllText(original + ".part", "partial");
+            File.WriteAllText(FilePath("report (1).zip.part.sqlite"), "checkpoint");
+            var reserved = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { FilePath("report (2).zip") };
+            Assert.Equal(FilePath("report (3).zip"), DestinationDirectory.SuggestFreshCopy(original, reserved));
+            Assert.Equal("partial", File.ReadAllText(original + ".part"));
+            Assert.Equal("checkpoint", File.ReadAllText(FilePath("report (1).zip.part.sqlite")));
+        }
+        finally { directory.Delete(true); }
+    }
+
     [Fact]
     public async Task InterruptedRowsRecoverPausedAndFutureJobsWaitForClock()
     {
@@ -397,8 +455,10 @@ public class QueueTests
             var filename = Path.Combine(directory, "preferences.bin");
             var store = new PreferencesStore(filename, protector);
             Assert.Equal(4, store.Load().Workers);
+            Assert.Null(store.Load().DownloadAdapters);
             Assert.Equal(QueueJob.MainQueue, Assert.Single(store.Load().Queues).Name);
             store.Save(new DesktopPreferences { Workers = 16, SpeedLimitKiB = 128, Priority = 2, Category = " PrivateCategory ", DestinationRoot = directory,
+                DownloadAdapters = [new("wifi", "192.0.2.2"), new("tether", "2001:db8::2")],
                 Queues = [new DownloadQueueSettings(), new DownloadQueueSettings { Name = "Night shift", MaxConcurrentDownloads = 3, StartTime = "22:00", StopTime = "06:00" }] });
             var saved = store.Load();
             Assert.Equal(directory, saved.DestinationRoot);
@@ -408,6 +468,8 @@ public class QueueTests
             Assert.Equal(4, saved.DefaultsFor("General").Workers);
             store.Save(saved with { CategoryDefaults = [new("PrivateCategory", 8, 3, directory), new("General", 2, -1)] });
             var withCategoryDefaults = store.Load();
+            Assert.Equal(saved.DownloadAdapters, withCategoryDefaults.DownloadAdapters);
+            Assert.Equal("tether", withCategoryDefaults.DownloadAdapters![1].AdapterId);
             Assert.Equal(new CategoryDownloadSettings("PrivateCategory", 8, 3, directory), withCategoryDefaults.DefaultsFor("privatecategory"));
             Assert.Equal(new CategoryDownloadSettings("General", 2, -1), withCategoryDefaults.DefaultsFor("General"));
             Assert.Equal(saved.Queues, withCategoryDefaults.Queues);

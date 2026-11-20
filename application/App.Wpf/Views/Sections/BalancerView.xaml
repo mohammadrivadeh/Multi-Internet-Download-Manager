@@ -40,7 +40,7 @@
                            AutomationProperties.LiveSetting="Polite" Margin="0,8,0,4"/>
                 <TextBlock Text="Tests use Cloudflare HTTPS with a 1 MiB download sample per tested path."
                            Foreground="{DynamicResource App.TextMuted}" TextWrapping="Wrap"/>
-                <TextBlock x:Name="SelectionSummary" Text="Select online adapters to estimate combined download speed."
+                <TextBlock x:Name="SelectionSummary" Text="Select adapters to use for downloads."
                            Foreground="{DynamicResource App.Accent}" FontWeight="SemiBold" TextWrapping="Wrap"
                            AutomationProperties.LiveSetting="Polite" Margin="0,10,0,12"/>
             </StackPanel>
@@ -57,7 +57,7 @@
                     <DataGridTemplateColumn Header="Use" Width="65">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <CheckBox IsChecked="{Binding Selected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                <CheckBox IsChecked="{Binding Selected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanSelect}"
                                           Click="AdapterSelectionChanged" HorizontalAlignment="Center" VerticalAlignment="Center"
                                           AutomationProperties.Name="{Binding Adapter.Name, StringFormat='Use {0}'}"/>
                             </DataTemplate>

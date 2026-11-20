@@ -3,6 +3,8 @@ using System.Globalization;
 namespace DownloadManager.Core;
 
 public enum QueueJobState { Queued, Running, Paused, Completed, Failed, Cancelled }
+[Flags]
+public enum CheckpointDifferences { None = 0, Source = 1, Length = 2, ETag = 4 }
 public sealed record QueuedPath(string AdapterId, string SourceAddress, long? BytesPerSecondLimit = null);
 public sealed record QueueJob
 {
@@ -24,6 +26,7 @@ public sealed record QueueJob
     public long? TotalBytes { get; init; }
     public bool CheckpointCleanupPending { get; init; }
     public string? FailureCode { get; init; }
+    public CheckpointDifferences ResumeDifferences { get; init; }
 
     public void Validate()
     {
@@ -45,6 +48,8 @@ public sealed record QueueJob
             throw new ArgumentException("Invalid or duplicate queued paths.");
         if (FailureCode is not null and not ("Validation" or "Network" or "Storage" or "Timeout" or "Failure"))
             throw new ArgumentException("Unknown failure category.");
+        if ((ResumeDifferences & ~(CheckpointDifferences.Source | CheckpointDifferences.Length | CheckpointDifferences.ETag)) != 0)
+            throw new ArgumentException("Unknown checkpoint difference.");
         if (CompletedBytes < 0 || TotalBytes is < 0 || (TotalBytes is { } total && CompletedBytes > total))
             throw new ArgumentException("Invalid queue progress.");
     }
@@ -59,7 +64,7 @@ public sealed record QueueJob
             _ => false
         };
         if (!allowed) throw new InvalidOperationException("Invalid queue state transition.");
-        return this with { State = next, FailureCode = null };
+        return this with { State = next, FailureCode = null, ResumeDifferences = CheckpointDifferences.None };
     }
 }
 

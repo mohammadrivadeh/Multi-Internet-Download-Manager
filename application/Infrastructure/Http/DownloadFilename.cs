@@ -11,6 +11,11 @@ public static class DownloadFilename
     {
         using var client = SystemRouteTransport.Create();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+        return await TryResolveAsync(source, client, timeout.Token);
+    }
+
+    public static async Task<string?> TryResolveAsync(Uri source, HttpClient client, CancellationToken token)
+    {
         using var request = new HttpRequestMessage(HttpMethod.Get, source)
         {
             Version = HttpVersion.Version11,
@@ -19,7 +24,7 @@ public static class DownloadFilename
         request.Headers.Range = new RangeHeaderValue(0, 0);
         try
         {
-            using var response = await HttpTransferPolicy.SendAsync(client, request, timeout.Token);
+            using var response = await HttpTransferPolicy.SendAsync(client, request, token);
             if (!response.IsSuccessStatusCode) return null;
             var disposition = response.Content.Headers.ContentDisposition;
             var supplied = ValidLeaf(disposition?.FileNameStar) ?? ValidLeaf(disposition?.FileName);

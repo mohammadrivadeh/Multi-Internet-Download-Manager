@@ -56,7 +56,21 @@ public sealed class QueueRow : ObservableObject
         while (amount >= 1000 && unit < units.Length - 1) { amount /= 1000; unit++; }
         return $"{amount:0.##} {units[unit]}";
     }
-    public string Failure => Job.CheckpointCleanupPending ? Desktop.Text("CheckpointCleanupNotice") : Job.FailureCode is { } code ? Desktop.Text($"QueueFailure{code}") : "";
+    public string Failure
+    {
+        get
+        {
+            if (Job.ResumeDifferences != CheckpointDifferences.None)
+            {
+                var fields = Enum.GetValues<CheckpointDifferences>()
+                    .Where(field => field != CheckpointDifferences.None && Job.ResumeDifferences.HasFlag(field))
+                    .Select(field => Desktop.Text($"CheckpointField{field}"));
+                return string.Format(Desktop.Text("CheckpointMismatchMessage"), string.Join(", ", fields));
+            }
+            return Job.CheckpointCleanupPending ? Desktop.Text("CheckpointCleanupNotice") :
+                Job.FailureCode is { } code ? Desktop.Text($"QueueFailure{code}") : "";
+        }
+    }
     public string RateLimit => Job.Options.BytesPerSecondLimit is { } limit ? (limit / 1000d).ToString("N1") : Desktop.Text("UnlimitedLabel");
     public int Priority => Job.Priority;
 }

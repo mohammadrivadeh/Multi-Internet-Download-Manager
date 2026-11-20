@@ -132,7 +132,7 @@ public partial class QueueView : UserControl
                  new("Daily start (HH:mm)", model.WindowStart), new("Daily stop (HH:mm)", model.WindowEnd),
                  new("Time zone offset", model.WindowOffset),
                  new("Network routing", model.UseSystemRoute ? "Windows system route" : "Saved download routes",
-                     Options: model.UseSystemRoute ? ["Windows system route"] : ["Saved download routes", "Windows system route"])],
+                     Options: model.UseSystemRoute ? ["Windows system route", "Selected balancer adapters"] : ["Saved download routes", "Selected balancer adapters", "Windows system route"])],
                 async values =>
                 {
                     model.WorkerCount = values[0];
@@ -144,6 +144,7 @@ public partial class QueueView : UserControl
                     model.WindowEnd = values[6];
                     model.WindowOffset = values[7];
                     model.UseSystemRoute = values[8] == "Windows system route";
+                    model.ReplaceEditedConnections = values[8] == "Selected balancer adapters";
                     await model.SaveEditedCommand.ExecuteAsync(null);
                     return model.IsEditing ? model.Status : null;
                 });
