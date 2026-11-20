@@ -205,12 +205,32 @@ public class DownloadEngineTests
             var samples = new List<DownloadProgress>();
 
             await new DownloadEngine().DownloadAsync(new("http://fixture.invalid/file"), target, [firstClient, secondClient],
-                Options with { Workers = 2 }, new InlineProgress(samples.Add), deadline.Token);
+                Options with { Workers = 2 }, new InlineProgress(samples.Add), deadline.Token,
+                jobId: Guid.NewGuid(), interfaceIndices: [71, 82]);
 
             Assert.True(attempted.To > attempted.From);
             Assert.Contains(attempted, second.Ranges);
             Assert.Equal(Fixture, await File.ReadAllBytesAsync(target, deadline.Token));
-            Assert.Equal(Fixture.Length, samples.Last().CompletedBytes);
+            var completed = samples.Last();
+            Assert.Equal(DownloadStage.Completed, completed.Stage);
+            Assert.Equal(Fixture.Length, completed.CompletedBytes);
+            Assert.Collection(completed.Paths, primary =>
+            {
+                Assert.Equal(1, primary.Ordinal);
+                Assert.Equal(71, primary.InterfaceIndex);
+                Assert.Equal(DownloadPathState.Retired, primary.State);
+                Assert.Equal(512, primary.ReceivedBytes);
+                Assert.Equal(0, primary.CheckpointedBytes);
+                Assert.Equal(0, primary.ActiveOperations);
+            }, surviving =>
+            {
+                Assert.Equal(2, surviving.Ordinal);
+                Assert.Equal(82, surviving.InterfaceIndex);
+                Assert.Equal(DownloadPathState.Available, surviving.State);
+                Assert.Equal(Fixture.Length, surviving.ReceivedBytes);
+                Assert.Equal(Fixture.Length, surviving.CheckpointedBytes);
+                Assert.Equal(0, surviving.ActiveOperations);
+            });
             Assert.All(samples, sample => Assert.InRange(sample.AcceptedBytes, sample.CompletedBytes, Fixture.Length));
             Assert.False(File.Exists(target + ".part.sqlite"));
         });

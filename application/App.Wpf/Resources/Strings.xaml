@@ -1,5 +1,13 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:sys="clr-namespace:System;assembly=System.Runtime">
     <sys:String x:Key="ProgressLabel">Download progress</sys:String>
+    <sys:String x:Key="DownloadPathSection">Network paths · latest attempt</sys:String>
+    <sys:String x:Key="DownloadPathNoSample">Path samples appear after the download starts in this session.</sys:String>
+    <sys:String x:Key="DownloadPathSampleFormat">Path {0} · {1} · {2} · {3} received · {4} saved for resume</sys:String>
+    <sys:String x:Key="DownloadPathInterfaceFormat">Interface {0}</sys:String>
+    <sys:String x:Key="DownloadPathSystemRoute">Windows system route</sys:String>
+    <sys:String x:Key="DownloadPathStatePending">Unverified</sys:String>
+    <sys:String x:Key="DownloadPathStateAvailable">Validated</sys:String>
+    <sys:String x:Key="DownloadPathStateRetired">Removed from this attempt</sys:String>
     <sys:String x:Key="AppTitle">Multi-Internet Network Balancer</sys:String>
     <sys:String x:Key="BalancerNavLabel">Network Balancer</sys:String>
     <sys:String x:Key="DownloadsNavLabel">Downloads</sys:String>

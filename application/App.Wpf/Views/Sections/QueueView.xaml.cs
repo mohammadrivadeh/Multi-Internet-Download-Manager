@@ -169,11 +169,16 @@ public partial class QueueView : UserControl
         AddField("Transfer window", row.DailyWindow);
         if (!string.IsNullOrWhiteSpace(row.Failure))
             AddField("Issue", row.Failure);
+        var paths = AddField(row.NetworkPathLabel, row.NetworkPathSummary);
+        paths.SetBinding(TextBox.TextProperty, new System.Windows.Data.Binding(nameof(QueueRow.NetworkPathSummary))
+        {
+            Source = row, Mode = System.Windows.Data.BindingMode.OneWay
+        });
         panel.Children.Add(new Button { Content = "Close", IsCancel = true, HorizontalAlignment = HorizontalAlignment.Right });
         var content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         EditorDialogs.Create(owner, "Download properties", content, 620).ShowDialog();
 
-        void AddField(string label, string value)
+        TextBox AddField(string label, string value)
         {
             var field = new TextBox
             {
@@ -182,6 +187,7 @@ public partial class QueueView : UserControl
             };
             panel.Children.Add(new Label { Content = label, Target = field });
             panel.Children.Add(field);
+            return field;
         }
     }
 }

@@ -24,6 +24,7 @@ public sealed class QueueRow : ObservableObject
 {
     private QueueJob job;
     private string liveSpeed = "—";
+    private IReadOnlyList<DownloadPathProgress> networkPaths = [];
     public string LiveSpeed { get => liveSpeed; internal set => SetProperty(ref liveSpeed, value); }
     private readonly IDesktopServices Desktop;
     public QueueJob Job => job;
@@ -56,6 +57,19 @@ public sealed class QueueRow : ObservableObject
     public string ProgressDisplay => Job.TotalBytes is { } total ? $"{FormatBytes(Job.CompletedBytes)} / {FormatBytes(total)}" : FormatBytes(Job.CompletedBytes);
     public double ProgressPercent => Job.TotalBytes is long total && total > 0 ? Math.Clamp((double)Job.CompletedBytes / total * 100d, 0d, 100d) : 0d;
     public string SizeDisplay => Job.TotalBytes is { } total ? FormatBytes(total) : "—";
+    public string NetworkPathLabel => Desktop.Text("DownloadPathSection");
+    public string NetworkPathSummary => networkPaths.Count == 0 ? Desktop.Text("DownloadPathNoSample")
+        : string.Join(Environment.NewLine, networkPaths.Select(path => string.Format(
+            Desktop.Text("DownloadPathSampleFormat"), path.Ordinal,
+            path.InterfaceIndex is { } index ? string.Format(Desktop.Text("DownloadPathInterfaceFormat"), index) : Desktop.Text("DownloadPathSystemRoute"),
+            Desktop.Text($"DownloadPathState{path.State}"), FormatBytes(path.ReceivedBytes), FormatBytes(path.CheckpointedBytes))));
+
+    internal void UpdateNetworkPaths(IReadOnlyList<DownloadPathProgress> paths)
+    {
+        if (networkPaths.SequenceEqual(paths)) return;
+        networkPaths = paths;
+        OnPropertyChanged(nameof(NetworkPathSummary));
+    }
     private static string FormatBytes(long bytes)
     {
         string[] units = ["B", "KB", "MB", "GB", "TB"];

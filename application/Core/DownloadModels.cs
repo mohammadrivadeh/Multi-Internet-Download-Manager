@@ -1,10 +1,15 @@
 namespace DownloadManager.Core;
 
 public enum DownloadStage { Probing, Downloading, Verifying, Completed }
+public enum DownloadPathState { Pending, Available, Retired }
+public sealed record DownloadPathProgress(int Ordinal, int? InterfaceIndex, long ReceivedBytes,
+    long CheckpointedBytes, int ActiveOperations, DownloadPathState State);
+
 public sealed record DownloadProgress(DownloadStage Stage, long CompletedBytes, long? TotalBytes, bool Resumed)
 {
     public long AcceptedBytes { get; init; } = CompletedBytes;
     public bool CheckpointCleanupPending { get; init; }
+    public IReadOnlyList<DownloadPathProgress> Paths { get; init; } = [];
 }
 
 public sealed record DownloadOptions

@@ -38,7 +38,12 @@ public sealed class DownloadEngine
         if (File.Exists(destination)) throw new IOException("Destination already exists; choose another filename.");
         var part = destination + ".part";
         var database = part + ".sqlite";
-        progress?.Report(new(DownloadStage.Probing, 0, null, false));
+        void Report(DownloadProgress value)
+        {
+            if (progress is not null)
+                progress.Report(trace is null ? value : value with { Paths = trace.Snapshot() });
+        }
+        Report(new(DownloadStage.Probing, 0, null, false));
         async Task<T> OnPathAsync<T>(int index, Func<CancellationToken, Task<T>> operation, CancellationToken token)
         {
             using var scope = trace?[index].Enter();
@@ -76,6 +81,7 @@ public sealed class DownloadEngine
                 throw new InvalidDataException("Selected paths do not expose the same representation.");
             resource = candidate;
             availablePaths.Add(index);
+            trace?[index].Validated();
             if (!resource.CanSegment) break;
         }
         if (resource is null)
@@ -85,12 +91,9 @@ public sealed class DownloadEngine
         {
             var index = availablePaths[0];
             if (trace is not null) LocalDiagnostics.Trace("download-mode", $"{trace[index].Detail} mode=sequential active_paths=1");
-            await OnPathAsync(index, async token =>
-            {
-                await DownloadSequentialAsync(source, destination, part, database, transports[index], resource,
-                    options, progress, rateLimiter, pathLimiters[index], token);
-                return true;
-            }, cancellationToken);
+            var size = await OnPathAsync(index, token => DownloadSequentialAsync(source, destination, part, database,
+                transports[index], resource, options, Report, rateLimiter, pathLimiters[index], token), cancellationToken);
+            Report(new(DownloadStage.Completed, size, size, false));
             return;
         }
         var length = resource.Length!.Value;
@@ -123,7 +126,7 @@ public sealed class DownloadEngine
             var pool = new RangeAllocator(length, verified);
             var allocationLock = new object();
             long completed = verified.Sum(r => r.Length);
-            progress?.Report(new(DownloadStage.Downloading, completed, length, resumed));
+            Report(new(DownloadStage.Downloading, completed, length, resumed));
             var coverage = new TransferCoverage(length, completed, options.Workers);
             var reportLock = new object();
             var reportWatch = Stopwatch.StartNew();
@@ -137,14 +140,14 @@ public sealed class DownloadEngine
                     if (!force && !firstSample && reportWatch.ElapsedMilliseconds < 100) return;
                     lastAccepted = snapshot.AcceptedBytes; lastDurable = snapshot.DurableBytes;
                     firstSample = false; reportWatch.Restart();
-                    progress?.Report(new DownloadProgress(DownloadStage.Downloading, snapshot.DurableBytes, length, resumed) { AcceptedBytes = snapshot.AcceptedBytes });
+                    Report(new DownloadProgress(DownloadStage.Downloading, snapshot.DurableBytes, length, resumed) { AcceptedBytes = snapshot.AcceptedBytes });
                 }
             }
             var workers = Enumerable.Range(0, options.Workers).Select(WorkerAsync).ToArray();
             await Task.WhenAll(workers); // All writers end before verification, finalization or a caller retry.
             cancellationToken.ThrowIfCancellationRequested();
             if (completed != length || RandomAccess.GetLength(handle) != length) throw new InvalidDataException("Incomplete coverage.");
-            progress?.Report(new(DownloadStage.Verifying, length, length, resumed));
+            Report(new(DownloadStage.Verifying, length, length, resumed));
             var checkedResource = false;
             Exception? verificationFailure = null;
             foreach (var index in CandidatePaths(0))
@@ -225,11 +228,11 @@ public sealed class DownloadEngine
         var cleanupPending = false;
         try { deleteCheckpoint(database); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { cleanupPending = true; }
-        progress?.Report(new DownloadProgress(DownloadStage.Completed, length, length, resumed) { CheckpointCleanupPending = cleanupPending });
+        Report(new DownloadProgress(DownloadStage.Completed, length, length, resumed) { CheckpointCleanupPending = cleanupPending });
     }
 
-    private static async Task DownloadSequentialAsync(Uri source, string destination, string part, string database, HttpClient client,
-        RemoteResource resource, DownloadOptions options, IProgress<DownloadProgress>? progress, PayloadRateLimiter? rateLimiter, PayloadRateLimiter? pathLimiter, CancellationToken token)
+    private static async Task<long> DownloadSequentialAsync(Uri source, string destination, string part, string database, HttpClient client,
+        RemoteResource resource, DownloadOptions options, Action<DownloadProgress> report, PayloadRateLimiter? rateLimiter, PayloadRateLimiter? pathLimiter, CancellationToken token)
     {
         if (File.Exists(part) || File.Exists(database)) throw new IOException("Existing partial state cannot be safely resumed in sequential mode.");
         var expectedLength = resource.Length;
@@ -259,10 +262,10 @@ public sealed class DownloadEngine
                     await PayloadRateLimiter.WaitBothAsync(rateLimiter, pathLimiter, count, token);
                     await RandomAccess.WriteAsync(handle, buffer.AsMemory(0, count), offset, token);
                     offset = checked(offset + count);
-                    progress?.Report(new(DownloadStage.Downloading, offset, total, false));
+                    report(new(DownloadStage.Downloading, offset, total, false));
                 }
                 if ((total ?? expectedLength) is { } size && offset != size) throw new EndOfStreamException("Sequential size mismatch.");
-                progress?.Report(new(DownloadStage.Verifying, offset, offset, false));
+                report(new(DownloadStage.Verifying, offset, offset, false));
                 await VerifyHashAsync(handle, offset, options.ExpectedSha256, token);
                 RandomAccess.FlushToDisk(handle);
                 expectedLength = offset;
@@ -270,7 +273,7 @@ public sealed class DownloadEngine
             token.ThrowIfCancellationRequested();
             File.Move(part, destination, false);
             created = false;
-            progress?.Report(new(DownloadStage.Completed, expectedLength!.Value, expectedLength, false));
+            return expectedLength!.Value;
         }
         finally { if (created) File.Delete(part); }
     }

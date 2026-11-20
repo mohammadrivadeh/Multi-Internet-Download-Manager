@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using DownloadManager.Core;
 
 namespace DownloadManager.Infrastructure.Diagnostics;
 
@@ -14,6 +15,7 @@ internal sealed class DownloadTrace : IAsyncDisposable
     }
 
     internal DownloadPathTrace this[int index] => paths[index];
+    internal IReadOnlyList<DownloadPathProgress> Snapshot() => Array.AsReadOnly(paths.Select(path => path.Snapshot()).ToArray());
 
     private void Sample(bool final)
     {
@@ -37,11 +39,15 @@ internal sealed class DownloadPathTrace(Guid job, int ordinal, int? index)
     private long checkpointed;
     private int retries;
     private int active;
+    private int state;
     private readonly Stopwatch sampleClock = Stopwatch.StartNew();
     private long previousBytes;
 
     internal void Receive(int count) => Interlocked.Add(ref received, count);
     internal void Checkpoint(long bytes) => Interlocked.Add(ref checkpointed, bytes);
+    internal void Validated() => Volatile.Write(ref state, (int)DownloadPathState.Available);
+    internal DownloadPathProgress Snapshot() => new(ordinal, index, Interlocked.Read(ref received),
+        Interlocked.Read(ref checkpointed), Volatile.Read(ref active), (DownloadPathState)Volatile.Read(ref state));
 
     internal IDisposable Enter()
     {
@@ -66,8 +72,11 @@ internal sealed class DownloadPathTrace(Guid job, int ordinal, int? index)
         LocalDiagnostics.Record("download-retry", error, $"{Detail} attempt={attempt}");
     }
 
-    internal void PathFailed(Exception error, string phase) =>
+    internal void PathFailed(Exception error, string phase)
+    {
+        Volatile.Write(ref state, (int)DownloadPathState.Retired);
         LocalDiagnostics.Record("download-path-retired", error, $"{Detail} phase={phase}");
+    }
 
     internal void Sample(bool final)
     {
