@@ -460,6 +460,22 @@ public class QueueTests
             Assert.Equal(payload, await File.ReadAllBytesAsync(target, deadline.Token));
             Assert.False(File.Exists(target + ".part.sqlite"));
             Assert.DoesNotContain("NEVER-PLAINTEXT", Encoding.UTF8.GetString(await File.ReadAllBytesAsync(path, deadline.Token)));
+            var logPath = DownloadManager.Infrastructure.Diagnostics.LocalDiagnostics.FilePath;
+            await using var log = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(log);
+            var logs = await reader.ReadToEndAsync(deadline.Token);
+            var jobLogs = logs.Split('\n').Where(line => line.Contains($"job={history.Id:N}", StringComparison.Ordinal)).ToArray();
+            Assert.Contains(jobLogs, line => line.Contains("download-start", StringComparison.Ordinal));
+            Assert.Contains(jobLogs, line => line.Contains("download-state-saved", StringComparison.Ordinal)
+                && line.Contains("state=Completed", StringComparison.Ordinal));
+            if (pauseAndReopen)
+                Assert.Contains(jobLogs, line => line.Contains("download-state-saved", StringComparison.Ordinal)
+                    && line.Contains("state=Paused bytes=4096", StringComparison.Ordinal));
+            Assert.All(jobLogs, line =>
+            {
+                Assert.DoesNotContain("NEVER-PLAINTEXT", line, StringComparison.Ordinal);
+                Assert.DoesNotContain(target, line, StringComparison.OrdinalIgnoreCase);
+            });
         }
         finally
         {

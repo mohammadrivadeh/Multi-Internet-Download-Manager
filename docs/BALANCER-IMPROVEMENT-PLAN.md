@@ -15,3 +15,5 @@ The goal is reliable use of distinct Windows Internet connections, faster comple
 | P2 | Review queue-wide capacity and speed controls. | Measure contention with simultaneous large and small jobs. Keep per-path caps and queue schedules effective during failover. |
 
 Build, integration tests and loopback fixtures establish implementation behavior. Record physical routing and performance in the [Windows results template](testing/windows-results-template.md).
+
+For a pause and resume investigation, filter the local log by the job identifier. Compare `download-start`, `download-path-sample` and `download-state-saved` across attempts. A `download-state-save-failed` event identifies a failed write. The queue retries that write before subsequent operations and records a successful save when it becomes durable. The scheduled loopback download test checks the persisted pause and completion events and verifies that the job log omits the signed URL token and destination.

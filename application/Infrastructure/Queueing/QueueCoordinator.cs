@@ -1,4 +1,5 @@
 using DownloadManager.Core;
+using DownloadManager.Infrastructure.Diagnostics;
 using DownloadManager.Infrastructure.Persistence;
 
 namespace DownloadManager.Infrastructure.Queueing;
@@ -273,7 +274,7 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
             }
             finally { gate.Release(); }
             DownloadProgress? latest = null;
-            DownloadManager.Infrastructure.Diagnostics.LocalDiagnostics.Trace("download-start",
+            LocalDiagnostics.Trace("download-start",
                 $"job={job.Id:N} route={(job.UseSystemRoute ? "system" : "bound")} paths={job.Paths.Count} workers={job.Options.Workers}");
             var progressLock = new object();
             var reporter = new CallbackProgress(value =>
@@ -281,7 +282,7 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
                 lock (progressLock)
                 {
                     if (latest?.Stage != value.Stage)
-                        DownloadManager.Infrastructure.Diagnostics.LocalDiagnostics.Trace("download-stage",
+                        LocalDiagnostics.Trace("download-stage",
                             $"job={job.Id:N} stage={value.Stage} bytes={value.CompletedBytes} total={value.TotalBytes}");
                     latest = value;
                 }
@@ -299,7 +300,7 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
                 if (ex is InvalidDataException && ex.Data[nameof(CheckpointDifferences)] is CheckpointDifferences changed)
                     resumeDifferences = changed;
                 var reason = resumeDifferences == CheckpointDifferences.None ? "" : $" checkpoint_mismatch={resumeDifferences.ToString().Replace(", ", "|")}";
-                DownloadManager.Infrastructure.Diagnostics.LocalDiagnostics.Record("download-failed", ex, $"job={job.Id:N} stage={latest?.Stage}{reason}");
+                LocalDiagnostics.Record("download-failed", ex, $"job={job.Id:N} stage={latest?.Stage}{reason}");
                 failure = ex switch
                 {
                     InvalidDataException => "Validation", HttpRequestException or HttpIOException or EndOfStreamException => "Network",
@@ -318,7 +319,7 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
                     job = job.Transition(terminal) with { CompletedBytes = latest?.CompletedBytes ?? job.CompletedBytes, TotalBytes = latest?.TotalBytes ?? job.TotalBytes,
                         CheckpointCleanupPending = latest?.CheckpointCleanupPending ?? false, FailureCode = failure, ResumeDifferences = resumeDifferences };
                 jobs[job.Id] = job; pendingWrites[job.Id] = job;
-                store.Save(job); pendingWrites.Remove(job.Id);
+                SavePendingState(job);
                 saved = true;
             }
             finally
@@ -346,7 +347,20 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
     {
         RequireInitialized();
         foreach (var pending in pendingWrites.Values.ToArray())
-        { store.Save(pending); pendingWrites.Remove(pending.Id); }
+            SavePendingState(pending);
+    }
+
+    private void SavePendingState(QueueJob job)
+    {
+        try { store.Save(job); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            LocalDiagnostics.Record("download-state-save-failed", error, $"job={job.Id:N} state={job.State}");
+            throw;
+        }
+        pendingWrites.Remove(job.Id);
+        LocalDiagnostics.Trace("download-state-saved",
+            $"job={job.Id:N} state={job.State} bytes={job.CompletedBytes} total={job.TotalBytes} failure={job.FailureCode ?? "none"}");
     }
 
     private void RequireInitialized()
