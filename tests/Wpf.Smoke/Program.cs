@@ -31,7 +31,10 @@ internal static class Program
             {
                 using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
                 await VerifyNewDownloadAsync(dispatcher, deadline.Token);
+                await VerifyRedownloadAsync(dispatcher, useSystemRoute: false, deadline.Token);
+                await VerifyRedownloadAsync(dispatcher, useSystemRoute: true, deadline.Token);
                 Console.WriteLine("PASS: New Download renders and validates. The queue controls start, stop, and resume the submitted job.");
+                Console.WriteLine("PASS: Redownload starts a fresh copy with its original route and speed limits.");
                 exitCode = 0;
             }
             catch (Exception error)
@@ -45,6 +48,51 @@ internal static class Program
         });
         Dispatcher.Run();
         return exitCode;
+    }
+
+    private static async Task VerifyRedownloadAsync(Dispatcher dispatcher, bool useSystemRoute, CancellationToken token)
+    {
+        var original = new QueueJob
+        {
+            Source = new Uri("https://example.invalid/redownload.bin"),
+            Destination = Path.Combine(Path.GetTempPath(), $"redownload-original-{Guid.NewGuid():N}.bin"),
+            CreatedAt = DateTimeOffset.UtcNow.AddDays(-1),
+            Options = new DownloadOptions { Workers = 4, BytesPerSecondLimit = 8192 },
+            UseSystemRoute = useSystemRoute,
+            Paths = useSystemRoute ? [] : [new("original-adapter", "192.0.2.45", 4096)],
+            State = QueueJobState.Completed,
+            CompletedBytes = 4,
+            TotalBytes = 4
+        };
+        var destination = Path.Combine(Path.GetTempPath(), $"redownload-copy-{Guid.NewGuid():N}.bin");
+        var desktop = new DestinationDesktop(dispatcher, destination);
+        var session = new SmokeSession();
+        session.Save(original);
+        using var model = new MainViewModel(desktop, session);
+        await model.InitializeAsync().WaitAsync(token);
+        try
+        {
+            model.SelectedJob = model.Jobs.Single();
+            Require(model.RedownloadSelectedCommand.CanExecute(null), "Redownload is disabled for a completed job.");
+            await model.RedownloadSelectedCommand.ExecuteAsync(null).WaitAsync(token);
+            var copy = await session.Executed.Task.WaitAsync(token);
+            Require(desktop.Suggestion is { } suggestion && suggestion != original.Destination,
+                "Redownload did not suggest a fresh path.");
+            Require(copy.Id != original.Id && copy.Destination == destination && copy.Source == original.Source &&
+                    copy.QueueName == original.QueueName && copy.CompletedBytes == 0 && copy.TotalBytes is null,
+                "Redownload did not start a new job at zero in the selected destination.");
+            Require(copy.UseSystemRoute == useSystemRoute && copy.Options == original.Options &&
+                    copy.Paths.SequenceEqual(original.Paths),
+                "Redownload changed the original route or speed limits.");
+            Require(session.Load().Single(job => job.Id == original.Id) == original &&
+                    model.Jobs.Single(row => row.Job.Id == original.Id).Job == original,
+                "Redownload changed the original history row.");
+            Require(!File.Exists(destination), "The fake transfer unexpectedly wrote a redownload file.");
+        }
+        finally
+        {
+            await model.ShutdownAsync().WaitAsync(token);
+        }
     }
 
     private static async Task VerifyNewDownloadAsync(Dispatcher dispatcher, CancellationToken token)
@@ -162,6 +210,22 @@ internal static class Program
     private static void Require(bool condition, string failure)
     {
         if (!condition) throw new InvalidOperationException(failure);
+    }
+
+    private sealed class DestinationDesktop(Dispatcher dispatcher, string destination) : IDesktopServices
+    {
+        private readonly DesktopServices desktop = new(dispatcher);
+        public string? Suggestion { get; private set; }
+
+        public string Text(string key) => desktop.Text(key);
+        public string ChooseDestination(string suggestion)
+        {
+            Suggestion = suggestion;
+            return destination;
+        }
+        public string? ChooseFolder() => null;
+        public void Post(Action action) => desktop.Post(action);
+        public IDesktopTimer CreateTimer(Func<Task> tick) => desktop.CreateTimer(tick);
     }
 
     private sealed class SmokeSession : IQueueSession, IQueueStore, IQueuedDownloadExecutor

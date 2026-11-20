@@ -199,14 +199,11 @@ public partial class MainViewModel
                 Status = "Choose a new destination for a fresh download.";
                 return;
             }
-            var paths = (DownloadAdapters ?? previous.Paths).ToArray();
-            if (paths.Length == 0) { Status = SelectAdaptersMessage; return; }
             var job = previous with
             {
-                Id = Guid.NewGuid(), Destination = destination, State = QueueJobState.Queued,
-                CompletedBytes = 0, TotalBytes = null, FailureCode = null, CheckpointCleanupPending = false, NotBefore = null,
-                UseSystemRoute = false, Paths = paths,
-                Options = previous.Options with { Workers = Math.Max(previous.Options.Workers, paths.Length), BytesPerSecondLimit = null }
+                Id = Guid.NewGuid(),
+                Destination = destination,
+                NotBefore = null
             };
             await queue.EnqueueAsync(job);
             await RefreshJobsAsync();

@@ -59,6 +59,7 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
             if (jobs.Count >= 1000) throw new InvalidOperationException("Remove terminal history before adding more jobs.");
             var job = request with { Destination = Path.GetFullPath(request.Destination), CreatedAt = time.GetUtcNow(), State = QueueJobState.Queued,
                 CompletedBytes = 0, TotalBytes = null, FailureCode = null, ResumeDifferences = CheckpointDifferences.None,
+                CheckpointCleanupPending = false,
                 Category = DownloadCategory.Normalize(request.Category), Paths = Array.AsReadOnly(request.Paths.ToArray()) };
             job.Validate();
             if (jobs.ContainsKey(job.Id)) throw new InvalidOperationException("Job identity already exists.");

@@ -21,3 +21,5 @@ For a pause and resume investigation, filter the local log by the job identifier
 Download Properties shows the latest attempt's path samples during the current app session. Each path reports bytes received, bytes saved for resume, and whether the engine retired it. Replayed payload remains attributed to the path where it arrived, while checkpoint bytes are attributed to the path that finished the range. A resumed attempt starts fresh counters for newly transferred bytes.
 
 The Downloads grid estimates speed independently for each running job. Its progress includes accepted bytes while a transfer is active and falls back to the durable checkpoint count when the transfer pauses. Measurement restarts after a stall or a new attempt.
+
+Redownload from zero creates a new queue entry and destination. It carries forward the original route selection, request count and speed limits. The new entry starts with zero progress and fresh recovery state. Its daily window still applies.

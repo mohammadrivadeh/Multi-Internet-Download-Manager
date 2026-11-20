@@ -407,6 +407,62 @@ public class DownloadEngineTests
     }
 
     [Fact]
+    public async Task SurvivorKeepsItsSharedPathCapWhenItReplaysTheOtherPathsRange()
+    {
+        await InDirectoryAsync(async target =>
+        {
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            (long From, long To) interruptedRange = default;
+            long firstHealthyRange = 0;
+            using var first = new FixtureHandler
+            {
+                BeforeRange = (from, to, _) =>
+                {
+                    interruptedRange = (from, to);
+                    throw new HttpRequestException(HttpRequestError.ConnectionError, "Injected adapter failure");
+                }
+            };
+            using var survivor = new FixtureHandler
+            {
+                BeforeRange = (_, _, _) =>
+                {
+                    Interlocked.CompareExchange(ref firstHealthyRange, System.Diagnostics.Stopwatch.GetTimestamp(), 0);
+                    return Task.CompletedTask;
+                }
+            };
+            using var firstClient = new HttpClient(first);
+            using var survivorClient = new HttpClient(survivor);
+            DownloadProgress? completed = null;
+
+            // Each range is half the payload. Pacing only the survivor's original worker would
+            // deliver the file in roughly half a second, rather than the shared one-second budget.
+            var half = Fixture.Length / 2;
+            await new DownloadEngine().DownloadAsync(new("http://fixture.invalid/file"), target, [firstClient, survivorClient],
+                Options with { Workers = 2, MinimumRangeBytes = half, MaximumRangeBytes = half },
+                new InlineProgress(value => { if (value.Stage == DownloadStage.Completed) completed = value; }),
+                cancellationToken: deadline.Token, transportSpeedLimits: [null, Fixture.Length],
+                jobId: Guid.NewGuid(), interfaceIndices: [71, 82]);
+
+            Assert.Contains(interruptedRange, survivor.Ranges);
+            Assert.NotEqual(default, interruptedRange);
+            Assert.NotEqual(0, firstHealthyRange);
+            Assert.True(System.Diagnostics.Stopwatch.GetElapsedTime(firstHealthyRange) >= TimeSpan.FromSeconds(0.98),
+                "Replayed and original bytes must share the survivor's one-second payload budget.");
+            Assert.Equal(Fixture, await File.ReadAllBytesAsync(target, deadline.Token));
+            Assert.NotNull(completed);
+            Assert.Collection(completed.Paths, failed =>
+            {
+                Assert.Equal(DownloadPathState.Retired, failed.State);
+                Assert.Equal(0, failed.CheckpointedBytes);
+            }, healthy =>
+            {
+                Assert.Equal(82, healthy.InterfaceIndex);
+                Assert.Equal(Fixture.Length, healthy.CheckpointedBytes);
+            });
+        });
+    }
+
+    [Fact]
     public async Task BandwidthWaitRespondsImmediatelyToCancellation()
     {
         var limiter = new DownloadManager.Infrastructure.Http.PayloadRateLimiter(1);
