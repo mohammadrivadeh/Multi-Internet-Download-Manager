@@ -1,4 +1,4 @@
-﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:sys="clr-namespace:System;assembly=System.Runtime">
 
     <sys:Double x:Key="App.DialogMaxHeight">700</sys:Double>
@@ -413,7 +413,7 @@
 
                         <Popup x:Name="Popup" Placement="Bottom"
                                IsOpen="{TemplateBinding IsDropDownOpen}"
-                               AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
+                               AllowsTransparency="True" Focusable="False" PopupAnimation="{DynamicResource App.ComboPopupAnimation}">
                             <Border MinWidth="{TemplateBinding ActualWidth}"
                                     MaxHeight="{TemplateBinding MaxDropDownHeight}"
                                     Margin="0,4,0,0"
@@ -609,7 +609,7 @@
 
                         <Popup x:Name="Popup" Placement="Bottom"
                                IsOpen="{TemplateBinding IsDropDownOpen}"
-                               AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
+                               AllowsTransparency="True" Focusable="False" PopupAnimation="{DynamicResource App.ComboPopupAnimation}">
                             <Border MinWidth="{TemplateBinding ActualWidth}"
                                     MaxHeight="{TemplateBinding MaxDropDownHeight}"
                                     Margin="0,4,0,0"

@@ -47,7 +47,7 @@
             </WrapPanel>
             </DockPanel>
             <TextBlock x:Name="SelectionHint" Grid.Row="1" Margin="0,0,0,8" Text="Use Select multiple to check several downloads." TextWrapping="Wrap"/>
-            <DataGrid x:Name="DownloadsGrid" SelectionChanged="DownloadsSelectionChanged" ItemsSource="{Binding JobsView}" SelectedItem="{Binding SelectedJob}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" MinHeight="180" Grid.Row="2" SelectionMode="Single" EnableRowVirtualization="True" VirtualizingPanel.VirtualizationMode="Recycling" EnableColumnVirtualization="True" ScrollViewer.CanContentScroll="True" AutomationProperties.Name="{DynamicResource QueueLabel}" PreviewMouseRightButtonDown="SelectContextRow" ColumnHeaderStyle="{StaticResource QueueHeader}">
+            <DataGrid x:Name="DownloadsGrid" SelectionChanged="DownloadsSelectionChanged" ItemsSource="{Binding JobsView}" SelectedItem="{Binding SelectedJob}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" MinHeight="180" Grid.Row="2" SelectionMode="Single" EnableRowVirtualization="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel" EnableColumnVirtualization="True" ScrollViewer.CanContentScroll="True" AutomationProperties.Name="{DynamicResource QueueLabel}" PreviewMouseRightButtonDown="SelectContextRow" ColumnHeaderStyle="{StaticResource QueueHeader}">
                 <DataGrid.ContextMenu>
                     <ContextMenu Style="{StaticResource AppContextMenu}" DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                         <ContextMenu.Resources>

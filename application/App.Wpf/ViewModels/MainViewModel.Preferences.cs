@@ -5,6 +5,22 @@ public partial class MainViewModel
 {
     private DesktopPreferences savedPreferences = new();
 
+    internal int MotionLevel => savedPreferences.MotionLevel;
+
+    internal async Task<string?> SaveMotionLevelAsync(int level)
+    {
+        if (!IsReady || !preferencesWritable) return Text("PreferencesLoadError");
+        var updated = CapturePreferences() with { MotionLevel = level };
+        try
+        {
+            await session.SavePreferencesAsync(updated);
+            savedPreferences = updated;
+            Presentation.AppMotion.Level = level;
+            return null;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { return Text("PreferencesSaveError"); }
+    }
+
     private DesktopPreferences CapturePreferences() => savedPreferences with { Queues = Queues.ToList() };
 
     internal CategoryDownloadSettings GetCategoryDefaults(string name) => savedPreferences.DefaultsFor(name);

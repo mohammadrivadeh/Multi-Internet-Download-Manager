@@ -22,7 +22,7 @@ Windows routing, WPF execution and real-device performance still require accepta
 
 ## Build and test
 
-Install SDK 10.0.404 (`global.json`), then from the repository root:
+Install .NET SDK 10.0.100 or a later 10.0 feature band, such as 10.0.404. Run these commands from the repository root:
 
 ```sh
 dotnet restore DownloadManager.sln

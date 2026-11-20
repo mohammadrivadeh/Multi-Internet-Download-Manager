@@ -1,5 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.ComponentModel;
+using DownloadManager.App.Presentation;
 
 namespace DownloadManager.App.Views.Shell;
 
@@ -8,7 +10,7 @@ internal static class EditorDialogs
     internal sealed record Field(string Label, string Value, Func<string?>? Browse = null, IReadOnlyList<string>? Options = null, bool AllowCustomValue = false);
     public static Window Create(Window owner, string title, object content, double width, bool hasOwnHeader = false)
     {
-        var window = new Window
+        var window = new AnimatedEditorWindow
         {
             Owner = owner, Title = title, Content = content, Width = width,
             SizeToContent = SizeToContent.Height, MaxHeight = SystemParameters.WorkArea.Height * .85,
@@ -46,6 +48,43 @@ internal static class EditorDialogs
             window.Content = frame;
         }
         return window;
+    }
+
+    private sealed class AnimatedEditorWindow : Window
+    {
+        private bool dismissing;
+        private bool dismissed;
+
+        protected override void OnContentRendered(EventArgs e)
+        {
+            base.OnContentRendered(e);
+            if (Content is UIElement surface) AppMotion.Enter(surface);
+        }
+
+        protected override void OnClosing(CancelEventArgs e)
+        {
+            if (dismissing && !dismissed)
+            {
+                e.Cancel = true;
+                return;
+            }
+
+            base.OnClosing(e);
+            if (e.Cancel || dismissed || !AppMotion.Enabled || !IsVisible || Content is not UIElement surface)
+                return;
+
+            var result = DialogResult;
+            e.Cancel = true;
+            dismissing = true;
+            _ = Dispatcher.BeginInvoke(async () =>
+            {
+                await AppMotion.DismissAsync(surface);
+                dismissed = true;
+                if (!IsVisible) return;
+                if (result.HasValue && DialogResult != result) DialogResult = result;
+                else Close();
+            });
+        }
     }
 
     public static Task<bool> EditTextAsync(Window owner, string title, string label, string initial,

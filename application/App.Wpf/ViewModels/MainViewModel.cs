@@ -117,6 +117,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 var saved = await session.LoadPreferencesAsync();
                 savedPreferences = saved;
+                Presentation.AppMotion.Level = saved.MotionLevel;
                 ReconcileQueues(saved.Queues);
                 await RefreshJobsAsync();
                 preferencesWritable = true;

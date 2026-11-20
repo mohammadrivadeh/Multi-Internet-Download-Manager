@@ -22,9 +22,11 @@ public sealed record DesktopPreferences
     public long SpeedLimitKiB { get; init; }
     public int Priority { get; init; }
     public string Category { get; init; } = DownloadCategory.Default;
+    public int MotionLevel { get; init; } = 2;
     public void Validate()
     {
-        if (Workers is < 1 or > 128 || SpeedLimitKiB is < 0 or > 1048576 || Priority is < -10 or > 10)
+        if (Workers is < 1 or > 128 || SpeedLimitKiB is < 0 or > 1048576 || Priority is < -10 or > 10
+            || MotionLevel is < 0 or > 3)
             throw new ArgumentException("Invalid desktop defaults.");
         _ = DownloadCategory.Normalize(Category);
         if (CategoryDefaults is null || CategoryDefaults.Any(item => item is null) ||

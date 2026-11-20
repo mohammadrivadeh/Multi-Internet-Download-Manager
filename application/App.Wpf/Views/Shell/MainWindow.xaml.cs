@@ -1,9 +1,9 @@
 using System.ComponentModel;
 using System.Windows;
-using System.Windows.Input;
 using DownloadManager.App.ViewModels;
 using DownloadManager.App.Views.Sections;
 using DownloadManager.App.Models;
+using DownloadManager.App.Presentation;
 using DownloadManager.Core;
 using System.Windows.Controls;
 namespace DownloadManager.App.Views.Shell;
@@ -23,11 +23,6 @@ public partial class MainWindow : Window
         StateChanged += (_, _) => UpdateWindowStateButton();
         Closing += OnClosing;
     }
-    private void TitleBarMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ClickCount == 2) { ToggleWindowState(); return; }
-        if (e.ButtonState == MouseButtonState.Pressed) DragMove();
-    }
     private void ToggleWindowState()
     {
         WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
@@ -37,12 +32,21 @@ public partial class MainWindow : Window
     private void CloseClick(object sender, RoutedEventArgs e) => Close();
     private void Navigate(string page)
     {
+        if (viewModel.CurrentPage == page) return;
         viewModel.CurrentPage = page;
+        AppMotion.Enter(PageSurface);
     }
     private void DownloadsClick(object sender, RoutedEventArgs e) => Navigate("Downloads");
     private void BalancerClick(object sender, RoutedEventArgs e) => Navigate("Network Balancer");
     private void QueueClick(object sender, RoutedEventArgs e) => Navigate("Queue");
     private void PreferencesClick(object sender, RoutedEventArgs e) => Navigate("Preferences");
+    private async void MotionSettingsClick(object sender, RoutedEventArgs e)
+    {
+        var levels = new[] { "Off", "Subtle", "Standard", "Expressive" };
+        await EditorDialogs.EditFieldsAsync(this, "Animation settings",
+            [new("Animation intensity", levels[viewModel.MotionLevel], Options: levels)],
+            values => viewModel.SaveMotionLevelAsync(Array.IndexOf(levels, values[0])));
+    }
     private void NewDownloadClick(object sender, RoutedEventArgs e)
     {
         Navigate("Downloads");
@@ -150,7 +154,11 @@ public partial class MainWindow : Window
         MaximizeGlyph.Text = WindowState == WindowState.Maximized ? "\uE923" : "\uE922";
     }
     private async Task LoadAsync()
-    { await viewModel.InitializeAsync(); await viewModel.RefreshCommand.ExecuteAsync(null); }
+    {
+        await viewModel.InitializeAsync();
+        if (!closing) AppMotion.Reveal(WindowSurface);
+        await viewModel.RefreshCommand.ExecuteAsync(null);
+    }
     private async void OnClosing(object? sender, CancelEventArgs e)
     {
         if (mayClose) return;
@@ -161,6 +169,7 @@ public partial class MainWindow : Window
         await BalancerPanel.StopCaptureAsync();
         if (initialization is not null) await initialization;
         await viewModel.ShutdownAsync();
+        await AppMotion.DismissAsync(WindowSurface);
         mayClose = true;
         Close();
     }
