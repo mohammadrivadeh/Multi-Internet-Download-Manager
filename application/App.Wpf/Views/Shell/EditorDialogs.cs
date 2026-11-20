@@ -58,7 +58,7 @@ internal static class EditorDialogs
         protected override void OnContentRendered(EventArgs e)
         {
             base.OnContentRendered(e);
-            if (Content is UIElement surface) AppMotion.Enter(surface);
+            if (Content is UIElement surface) AppMotion.Reveal(surface);
         }
 
         protected override void OnClosing(CancelEventArgs e)

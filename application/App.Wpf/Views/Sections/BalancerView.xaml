@@ -3,6 +3,11 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              Loaded="OnLoaded" IsVisibleChanged="OnVisibilityChanged">
     <UserControl.Resources>
+        <DataTemplate x:Key="AdapterSelection">
+            <CheckBox IsChecked="{Binding Selected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanSelect}"
+                      Click="AdapterSelectionChanged" HorizontalAlignment="Center" VerticalAlignment="Center"
+                      AutomationProperties.Name="{Binding Adapter.Name, StringFormat='Use {0}'}"/>
+        </DataTemplate>
         <Style x:Key="AdapterCellText" TargetType="TextBlock">
             <Setter Property="TextAlignment" Value="Center"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
@@ -54,15 +59,7 @@
                 <TextBlock Text="Internet connections" FontWeight="SemiBold" Margin="0,0,0,6"/>
                 <DataGrid x:Name="AdapterTable" Grid.Row="1" Style="{StaticResource AdapterGrid}" AutomationProperties.Name="Internet connections">
                 <DataGrid.Columns>
-                    <DataGridTemplateColumn Header="Use" Width="65">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <CheckBox IsChecked="{Binding Selected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanSelect}"
-                                          Click="AdapterSelectionChanged" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                          AutomationProperties.Name="{Binding Adapter.Name, StringFormat='Use {0}'}"/>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Use" Width="65" CellTemplate="{StaticResource AdapterSelection}"/>
                     <DataGridTextColumn Header="Adapter" Binding="{Binding Adapter.Name}" Width="1.2*" ElementStyle="{StaticResource AdapterCellText}"/>
                     <DataGridTextColumn Header="IPv4" Binding="{Binding Adapter.IPv4}" Width="*" ElementStyle="{StaticResource AdapterCellText}"/>
                     <DataGridTextColumn Header="IPv6" Binding="{Binding Adapter.IPv6}" Width="1.4*" ElementStyle="{StaticResource AdapterCellText}"/>
@@ -73,6 +70,7 @@
                 <TextBlock Grid.Row="2" Text="Other adapters" FontWeight="SemiBold" Margin="0,12,0,6"/>
                 <DataGrid x:Name="OtherAdapterTable" Grid.Row="3" Style="{StaticResource AdapterGrid}" AutomationProperties.Name="Other adapters">
                     <DataGrid.Columns>
+                        <DataGridTemplateColumn Header="Use" Width="65" CellTemplate="{StaticResource AdapterSelection}"/>
                         <DataGridTextColumn Header="Adapter" Binding="{Binding Adapter.Name}" Width="*" ElementStyle="{StaticResource AdapterCellText}"/>
                         <DataGridTextColumn Header="IPv4" Binding="{Binding Adapter.IPv4}" Width="*" ElementStyle="{StaticResource AdapterCellText}"/>
                         <DataGridTextColumn Header="IPv6" Binding="{Binding Adapter.IPv6}" Width="1.3*" ElementStyle="{StaticResource AdapterCellText}"/>

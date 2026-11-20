@@ -177,8 +177,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public async Task ShutdownAsync()
     {
         IsReady = false; startedQueues.Clear(); timer.Stop(); foreach (var cancellation in queueStops.Values) cancellation.Cancel();
-        var tasks = new[] { RunQueueCommand.ExecutionTask, AddCommand.ExecutionTask, ResumeSelectedCommand.ExecutionTask,
-            CancelSelectedCommand.ExecutionTask, ClearHistoryCommand.ExecutionTask, RefreshCommand.ExecutionTask, AssignCategoryCommand.ExecutionTask,
+        var tasks = new[] { RunQueueCommand.ExecutionTask, AddCommand.ExecutionTask, StartSelectedCommand.ExecutionTask,
+            ResumeSelectedCommand.ExecutionTask, PauseSelectedCommand.ExecutionTask, CancelSelectedCommand.ExecutionTask,
+            RedownloadSelectedCommand.ExecutionTask, ClearHistoryCommand.ExecutionTask, RefreshCommand.ExecutionTask, AssignCategoryCommand.ExecutionTask,
             RetryQueueSaveCommand.ExecutionTask, SaveQueueSettingsCommand.ExecutionTask, CreateQueueCommand.ExecutionTask, RenameQueueCommand.ExecutionTask,
             DeleteQueueCommand.ExecutionTask, MoveSelectedQueueCommand.ExecutionTask,
             EditSelectedCommand.ExecutionTask, SaveEditedCommand.ExecutionTask };

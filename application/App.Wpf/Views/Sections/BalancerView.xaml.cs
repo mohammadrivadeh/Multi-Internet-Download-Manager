@@ -21,6 +21,7 @@ public partial class BalancerView : UserControl
     private AdapterRow[]? adapterRows;
     private readonly NetworkPathCatalog catalog = new();
     private CancellationTokenSource? scan;
+    private bool savingSelection;
     private readonly System.Windows.Threading.DispatcherTimer refreshTimer = new() { Interval = TimeSpan.FromSeconds(2) };
 
     public BalancerView()
@@ -30,7 +31,7 @@ public partial class BalancerView : UserControl
         {
             refreshTimer.Stop();
             if (!IsLoaded || !IsVisible) return;
-            if (scan is not null) { refreshTimer.Start(); return; }
+            if (scan is not null || savingSelection) { refreshTimer.Start(); return; }
             await ScanAsync();
         };
         Unloaded += (_, _) =>
@@ -70,23 +71,20 @@ public partial class BalancerView : UserControl
     internal async Task ScanOnceAsync()
     {
         if (IsVisible && !scanned && DataContext is MainViewModel { IsReady: true })
-        {
-            scanned = true;
             await ScanAsync();
-        }
     }
 
     private async void ScanClick(object sender, RoutedEventArgs e) => await ScanAsync();
 
     private async Task ScanAsync()
     {
-        if (scan is not null || DataContext is not MainViewModel { IsReady: true } model) return;
+        if (scan is not null || savingSelection || DataContext is not MainViewModel { IsReady: true } model) return;
         scanned = true;
         using var cancellation = new CancellationTokenSource();
         scan = cancellation;
         ScanButton.IsEnabled = false;
         StartCaptureButton.IsEnabled = false;
-        AdapterTable.IsEnabled = false;
+        SetSelectionEnabled(false);
         ScanStatus.Text = "Scanning and testing adapters…";
         try
         {
@@ -119,8 +117,8 @@ public partial class BalancerView : UserControl
                 rows.Add(new AdapterRow(adapter, sample, family, downloadPath, selected));
             }
             adapterRows = rows.ToArray();
-            AdapterTable.ItemsSource = rows.Where(row => row.Eligible).ToArray();
-            OtherAdapterTable.ItemsSource = rows.Where(row => !row.Eligible).ToArray();
+            AdapterTable.ItemsSource = rows.Where(row => row.Online).ToArray();
+            OtherAdapterTable.ItemsSource = rows.Where(row => !row.Online).ToArray();
             ScanStatus.Text = $"{rows.Count(row => row.Online)} verified · {rows.Count(row => row.Eligible && !row.Online)} unverified";
             UpdateSelectionSummary();
             if (previous is not null || rows.Any(row => row.Selected)) await PersistSelectionAsync(model);
@@ -136,7 +134,7 @@ public partial class BalancerView : UserControl
         {
             scan = null;
             ScanButton.IsEnabled = true;
-            AdapterTable.IsEnabled = capture is null;
+            SetSelectionEnabled(capture is null);
             StartCaptureButton.IsEnabled = capture is null;
         }
     }
@@ -160,14 +158,17 @@ public partial class BalancerView : UserControl
 
     private async Task PersistSelectionAsync(MainViewModel model)
     {
-        if (adapterRows is null) return;
+        if (savingSelection || adapterRows is null) return;
+        var savedPaths = model.DownloadAdapters ?? [];
         var visible = adapterRows.Where(row => row.Path is not null).Select(row => row.Path!.AdapterId)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var selection = (model.DownloadAdapters ?? []).Where(saved => !visible.Contains(saved.AdapterId))
+        var selection = savedPaths.Where(saved => !visible.Contains(saved.AdapterId))
             .Concat(adapterRows.Where(row => row.Selected && row.Path is not null)
-                .Select(row => new QueuedPath(row.Path!.AdapterId, row.Path.SourceAddress.ToString()))).ToList();
+                .Select(row => new QueuedPath(row.Path!.AdapterId, row.Path.SourceAddress.ToString(),
+                    savedPaths.FirstOrDefault(saved => string.Equals(saved.AdapterId, row.Path.AdapterId, StringComparison.OrdinalIgnoreCase))?.BytesPerSecondLimit))).ToList();
         if (model.DownloadAdapters?.SequenceEqual(selection) == true) return;
-        AdapterTable.IsEnabled = false;
+        savingSelection = true;
+        SetSelectionEnabled(false);
         try
         {
             if (await model.SaveDownloadAdaptersAsync(selection) is { } error)
@@ -176,7 +177,17 @@ public partial class BalancerView : UserControl
                 scanned = false;
             }
         }
-        finally { AdapterTable.IsEnabled = capture is null && scan is null; }
+        finally
+        {
+            savingSelection = false;
+            SetSelectionEnabled(capture is null && scan is null);
+        }
+    }
+
+    private void SetSelectionEnabled(bool enabled)
+    {
+        AdapterTable.IsEnabled = enabled;
+        OtherAdapterTable.IsEnabled = enabled;
     }
 
     private void UpdateSelectionSummary()
@@ -197,7 +208,7 @@ public partial class BalancerView : UserControl
     private async void StartCaptureClick(object sender, RoutedEventArgs e)
     {
 #if CAPTURE_PREVIEW
-        if (capture is not null || scan is not null)
+        if (capture is not null || scan is not null || savingSelection)
             return;
         var selected = adapterRows?.Where(row => row.Eligible && row.Selected)
             .Select(row => new CaptureAdapterChoice(row.Adapter.Index, row.Adapter.Name)).ToArray();
@@ -208,7 +219,7 @@ public partial class BalancerView : UserControl
         }
         StartCaptureButton.IsEnabled = false;
         ScanButton.IsEnabled = false;
-        AdapterTable.IsEnabled = false;
+        SetSelectionEnabled(false);
         CaptureStatus.Text = "Waiting for Windows approval and capture startup…";
         LocalDiagnostics.Trace("capture-start", $"interfaces={string.Join(',', selected.Select(item => item.Index))}");
         var session = new CaptureSession(Path.Combine(AppContext.BaseDirectory, "balancer", "desktop-capture.exe"), selected,
@@ -245,7 +256,7 @@ public partial class BalancerView : UserControl
             capture = null;
             StartCaptureButton.IsEnabled = true;
             ScanButton.IsEnabled = true;
-            AdapterTable.IsEnabled = true;
+            SetSelectionEnabled(scan is null && !savingSelection);
             StopCaptureButton.IsEnabled = false;
             if (IsLoaded && IsVisible)
             {

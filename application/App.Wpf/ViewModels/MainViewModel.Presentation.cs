@@ -9,7 +9,8 @@ public partial class MainViewModel
     private bool CanCancelEdit => IsEditing && !SaveEditedCommand.IsRunning;
     private bool CanEditSelected => IsReady && !IsBusy && !SaveEditedCommand.IsRunning && SelectedJob?.Job.State is QueueJobState.Queued or QueueJobState.Paused or QueueJobState.Failed;
     private bool CanSaveEdited => IsReady && IsEditing;
-    private bool CanAdd => IsReady && !IsEditing;
+    public bool CanOpenNewDownload => IsReady && !IsEditing;
+    private bool CanAdd => CanOpenNewDownload;
     private bool CanPickIdentity => IsReady && !IsEditing;
     partial void OnIsEditingChanged(bool value) => RefreshActionAvailability();
     private bool CanResumeSelected => IsReady && SelectedJob?.Job.State is QueueJobState.Paused or QueueJobState.Failed;
@@ -19,6 +20,7 @@ public partial class MainViewModel
     private bool CanRedownloadSelected => IsReady && SelectedJob?.Job.State is QueueJobState.Completed or QueueJobState.Cancelled or QueueJobState.Paused or QueueJobState.Failed;
     private void RefreshActionAvailability()
     {
+        OnPropertyChanged(nameof(CanOpenNewDownload));
         ResumeSelectedCommand.NotifyCanExecuteChanged(); CancelSelectedCommand.NotifyCanExecuteChanged();
         StartSelectedCommand.NotifyCanExecuteChanged(); PauseSelectedCommand.NotifyCanExecuteChanged();
         RedownloadSelectedCommand.NotifyCanExecuteChanged();

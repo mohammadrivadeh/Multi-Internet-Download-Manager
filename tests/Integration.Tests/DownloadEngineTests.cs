@@ -96,6 +96,164 @@ public class DownloadEngineTests
         });
     }
 
+    [Fact]
+    public async Task ValidatedPathsTransferConcurrentDisjointRanges()
+    {
+        await InDirectoryAsync(async target =>
+        {
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var firstEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var secondEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            static async Task WaitForPeerAsync(TaskCompletionSource entered, TaskCompletionSource peer, CancellationToken token)
+            {
+                entered.TrySetResult();
+                await peer.Task.WaitAsync(token);
+            }
+            using var first = new FixtureHandler { BeforeRange = (_, _, token) => WaitForPeerAsync(firstEntered, secondEntered, token) };
+            using var second = new FixtureHandler { BeforeRange = (_, _, token) => WaitForPeerAsync(secondEntered, firstEntered, token) };
+            using var firstClient = new HttpClient(first);
+            using var secondClient = new HttpClient(second);
+
+            await new DownloadEngine().DownloadAsync(new("http://fixture.invalid/file"), target, [firstClient, secondClient],
+                Options with { Workers = 2 }, cancellationToken: deadline.Token);
+
+            Assert.Contains(first.Ranges, range => range.To > range.From);
+            Assert.Contains(second.Ranges, range => range.To > range.From);
+            long nextStart = 0;
+            foreach (var range in first.Ranges.Concat(second.Ranges).Where(range => range.To > range.From).OrderBy(range => range.From))
+            {
+                Assert.Equal(nextStart, range.From);
+                nextStart = range.To + 1;
+            }
+            Assert.Equal(Fixture.Length, nextStart);
+            Assert.Equal(Fixture, await File.ReadAllBytesAsync(target, deadline.Token));
+        });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InvalidatingOnePathReplaysItsRangeButCancellingTheJobStopsAllPaths(bool cancelJob)
+    {
+        await InDirectoryAsync(async target =>
+        {
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var stop = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
+            using var pathInvalidated = new CancellationTokenSource();
+            var primaryEntered = new TaskCompletionSource<(long From, long To)>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var first = new FixtureHandler
+            {
+                BeforeRange = async (from, to, token) =>
+                {
+                    primaryEntered.TrySetResult((from, to));
+                    await Task.Delay(Timeout.Infinite, token);
+                }
+            };
+            using var second = new FixtureHandler();
+            using var firstClient = new HttpClient(first);
+            using var secondClient = new HttpClient(second);
+
+            var download = new DownloadEngine().DownloadAsync(new("http://fixture.invalid/file"), target, [firstClient, secondClient],
+                Options with { Workers = 2 }, cancellationToken: stop.Token, transportInvalidations: [pathInvalidated.Token, CancellationToken.None]);
+            var interruptedRange = await primaryEntered.Task.WaitAsync(deadline.Token);
+            if (cancelJob)
+            {
+                stop.Cancel();
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => download);
+                Assert.DoesNotContain(interruptedRange, second.Ranges);
+                Assert.False(File.Exists(target));
+            }
+            else
+            {
+                pathInvalidated.Cancel();
+                await download;
+                Assert.Contains(interruptedRange, second.Ranges);
+                Assert.Equal(Fixture, await File.ReadAllBytesAsync(target, deadline.Token));
+            }
+            Assert.False(deadline.IsCancellationRequested);
+        });
+    }
+
+    [Fact]
+    public async Task PartialRangeIsReplayedOnHealthyPathWhenPrimaryStaysDown()
+    {
+        await InDirectoryAsync(async target =>
+        {
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var lostPath = 0;
+            (long From, long To) attempted = default;
+            using var first = new FixtureHandler
+            {
+                BeforeRequest = () =>
+                {
+                    if (Volatile.Read(ref lostPath) != 0)
+                        throw new HttpRequestException(HttpRequestError.ConnectionError, "Injected persistent adapter loss");
+                },
+                RangeResponse = (response, from, to) =>
+                {
+                    attempted = (from, to);
+                    response.Content.Dispose();
+                    response.Content = new ByteArrayContent(Fixture.AsSpan((int)from, 512).ToArray());
+                    response.Content.Headers.ContentRange = new(from, to, Fixture.Length);
+                    response.Content.Headers.ContentLength = to - from + 1;
+                    Volatile.Write(ref lostPath, 1);
+                }
+            };
+            using var second = new FixtureHandler();
+            using var firstClient = new HttpClient(first);
+            using var secondClient = new HttpClient(second);
+            var samples = new List<DownloadProgress>();
+
+            await new DownloadEngine().DownloadAsync(new("http://fixture.invalid/file"), target, [firstClient, secondClient],
+                Options with { Workers = 2 }, new InlineProgress(samples.Add), deadline.Token);
+
+            Assert.True(attempted.To > attempted.From);
+            Assert.Contains(attempted, second.Ranges);
+            Assert.Equal(Fixture, await File.ReadAllBytesAsync(target, deadline.Token));
+            Assert.Equal(Fixture.Length, samples.Last().CompletedBytes);
+            Assert.All(samples, sample => Assert.InRange(sample.AcceptedBytes, sample.CompletedBytes, Fixture.Length));
+            Assert.False(File.Exists(target + ".part.sqlite"));
+        });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ServerRejectionOrChangedValidatorNeverReplaysRangeOnAnotherPath(bool changedValidator)
+    {
+        await InDirectoryAsync(async target =>
+        {
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            (long From, long To) rejected = default;
+            using var first = new FixtureHandler
+            {
+                RangeResponse = (response, from, to) =>
+                {
+                    rejected = (from, to);
+                    if (changedValidator)
+                        response.Headers.ETag = new("\"changed\"");
+                    else
+                        response.StatusCode = HttpStatusCode.Forbidden;
+                }
+            };
+            using var second = new FixtureHandler();
+            using var firstClient = new HttpClient(first);
+            using var secondClient = new HttpClient(second);
+
+            var download = new DownloadEngine().DownloadAsync(new("http://fixture.invalid/file"), target, [firstClient, secondClient],
+                Options with { Workers = 2 }, cancellationToken: deadline.Token);
+            if (changedValidator)
+                await Assert.ThrowsAsync<InvalidDataException>(() => download);
+            else
+                Assert.Equal(HttpStatusCode.Forbidden,
+                    (await Assert.ThrowsAsync<DownloadManager.Infrastructure.Http.HttpStatusFailure>(() => download)).StatusCode);
+
+            Assert.True(rejected.To > rejected.From);
+            Assert.DoesNotContain(rejected, second.Ranges);
+            Assert.False(File.Exists(target));
+        });
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -265,13 +423,18 @@ public class DownloadEngineTests
         private int maximum;
         public int MaxConcurrent => maximum;
         public int DelayMilliseconds { get; init; } = 2;
-        public int RequestCount { get; private set; }
+        private int requestCount;
+        public int RequestCount => Volatile.Read(ref requestCount);
         public TimeSpan RetryDelay { get; init; } = TimeSpan.Zero;
         public bool FailOnce { get; set; }
+        public Action? BeforeRequest { get; init; }
+        public Func<long, long, CancellationToken, Task>? BeforeRange { get; init; }
+        public Action<HttpResponseMessage, long, long>? RangeResponse { get; init; }
         public List<(long From, long To)> Ranges { get; } = [];
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            RequestCount++;
+            BeforeRequest?.Invoke();
+            Interlocked.Increment(ref requestCount);
             var now = Interlocked.Increment(ref active);
             int observed;
             do { observed = maximum; if (now <= observed) break; }
@@ -290,11 +453,14 @@ public class DownloadEngineTests
             var to = selected?.To ?? Fixture.Length - 1;
             var isRange = selected is not null && SupportsRanges;
             if (!isRange) { from = 0; to = Fixture.Length - 1; }
+            var isDataRange = request.Headers.IfRange is not null;
+            if (isDataRange && BeforeRange is not null) await BeforeRange(from, to, cancellationToken);
             lock (Ranges) Ranges.Add((from, to));
             var result = new HttpResponseMessage(isRange ? HttpStatusCode.PartialContent : HttpStatusCode.OK)
             { Content = new ByteArrayContent(Fixture.AsSpan((int)from, (int)(to - from + 1)).ToArray()) };
             if (ETag is not null) result.Headers.ETag = new(ETag);
             if (isRange) result.Content.Headers.ContentRange = new(from, to, Fixture.Length);
+            if (isDataRange) RangeResponse?.Invoke(result, from, to);
             return result;
         }
     }

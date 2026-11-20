@@ -1,6 +1,7 @@
 using System.Net;
 using DownloadManager.Core;
 using DownloadManager.Infrastructure.Downloads;
+using DownloadManager.Infrastructure.Diagnostics;
 using DownloadManager.Infrastructure.Networking;
 
 namespace DownloadManager.Infrastructure.Queueing;
@@ -25,23 +26,43 @@ public sealed class QueuedDownloadExecutor : IQueuedDownloadExecutor
         using var system = job.UseSystemRoute ? SystemRouteTransport.Create() : null;
         if (system is not null)
         {
-            await new DownloadEngine().DownloadAsync(job.Source, job.Destination, [system], job.Options, progress, token);
+            await new DownloadEngine().DownloadAsync(job.Source, job.Destination, [system], job.Options, progress, token, jobId: job.Id);
             return;
         }
         var sessions = new List<NetworkPathSession>();
+        var limits = new List<long?>();
+        var interfaceIndices = new List<int>();
         try
         {
             var catalog = new NetworkPathCatalog();
             var available = catalog.Discover();
             foreach (var selected in job.Paths)
             {
+                token.ThrowIfCancellationRequested();
                 var address = IPAddress.Parse(selected.SourceAddress);
-                var path = available.SingleOrDefault(p => p.AdapterId == selected.AdapterId && p.SourceAddress.Equals(address))
-                    ?? throw new InvalidOperationException("A queued path is unavailable. Edit the job's connection selection.");
-                sessions.Add(new(path, catalog));
+                var path = NetworkPathCatalog.ResolveSelected(available, selected.AdapterId, address);
+                if (path is null)
+                {
+                    LocalDiagnostics.Trace("download-path-unavailable", $"job={job.Id:N} reason=source-not-found family={address.AddressFamily}");
+                    continue;
+                }
+                try { sessions.Add(new(path, catalog)); }
+                catch (NetworkPathChangedException error)
+                {
+                    LocalDiagnostics.Record("download-path-unavailable", error, $"job={job.Id:N} interface={path.InterfaceIndex}");
+                    continue;
+                }
+                limits.Add(selected.BytesPerSecondLimit);
+                interfaceIndices.Add(path.InterfaceIndex);
             }
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(sessions.Select(s => s.Invalidated).Append(token).ToArray());
-            await new DownloadEngine().DownloadAsync(job.Source, job.Destination, sessions.Select(s => s.Client).ToArray(), job.Options, progress, linked.Token, job.Paths.Select(p => p.BytesPerSecondLimit).ToArray());
+            if (sessions.Count == 0)
+                throw new HttpRequestException("No queued path is available. Check the selected adapters and addresses.");
+            await new DownloadEngine().DownloadAsync(job.Source, job.Destination, sessions.Select(s => s.Client).ToArray(),
+                job.Options, progress, token, limits, job.Id, interfaceIndices, sessions.Select(s => s.Invalidated).ToArray());
+        }
+        catch (NetworkPathChangedException error)
+        {
+            throw new HttpRequestException("A selected network path changed or went offline.", error);
         }
         finally { foreach (var session in sessions) session.Dispose(); }
     }

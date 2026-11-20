@@ -22,17 +22,21 @@ public sealed class NetworkPathSession : IDisposable
         var sockets = PathProbe.CreateHandler(connector.ConnectAsync);
         sockets.MaxConnectionsPerServer = 128;
         Client = new HttpClient(new CurrentPathHandler(connector) { InnerHandler = sockets }) { Timeout = Timeout.InfiniteTimeSpan };
-        changed = (_, _) => Invalidate();
-        availability = (_, _) => Invalidate();
+        changed = (_, _) => CheckPath(connector);
+        availability = (_, _) => CheckPath(connector);
         NetworkChange.NetworkAddressChanged += changed;
         NetworkChange.NetworkAvailabilityChanged += availability;
     }
 
-    private void Invalidate()
+    private void CheckPath(WindowsPathConnector connector)
     {
+        bool current;
+        try { current = connector.IsCurrent(); }
+        catch (NetworkInformationException) { return; } // A failed inventory does not establish that this adapter disappeared.
+        if (current) return;
         lock (sync)
         {
-            if (disposed) return;
+            if (disposed || invalidated.IsCancellationRequested) return;
             invalidated.Cancel();
             Client.CancelPendingRequests();
         }

@@ -32,9 +32,9 @@ public class PathProbeTests
         var connector = new WindowsPathConnector(path, catalog);
         connector.EnsureCurrent();
         catalog.Paths = [new("adapter", "test", IPAddress.Parse("192.0.2.1"), 42, "new")];
-        Assert.Throws<InvalidOperationException>(connector.EnsureCurrent);
+        Assert.Throws<NetworkPathChangedException>(connector.EnsureCurrent);
         catalog.Paths = [];
-        Assert.Throws<InvalidOperationException>(connector.EnsureCurrent);
+        Assert.Throws<NetworkPathChangedException>(connector.EnsureCurrent);
     }
 
     [Fact]

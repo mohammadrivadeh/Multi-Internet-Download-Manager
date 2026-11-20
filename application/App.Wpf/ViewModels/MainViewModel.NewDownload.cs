@@ -25,8 +25,14 @@ public partial class MainViewModel
 
     internal void PrepareNewDownload()
     {
-        NewDownloadQueue = QueueJob.MainQueue;
+        NewDownloadQueue = SelectedQueueName;
         NewDownloadError = "";
+        Url = "";
+        ExpectedSha256 = "";
+        ScheduledStart = "";
+        WindowStart = "";
+        WindowEnd = "";
+        WindowOffset = DateTimeOffset.Now.ToString("zzz");
         automaticDestination = Destination;
         var requested = string.IsNullOrEmpty(CategoryFilter) ? savedPreferences.Category : CategoryFilter;
         Category = DownloadCategories.FirstOrDefault(item => string.Equals(item.Key, requested, StringComparison.OrdinalIgnoreCase))?.Key

@@ -72,6 +72,39 @@ public class QueueTests
     }
 
     [Fact]
+    public async Task ExplicitResumeRunsTheSelectedDownloadBeforeHigherPriorityWork()
+    {
+        var executor = new FakeExecutor((_, _, _) => Task.CompletedTask);
+        var queue = new QueueCoordinator(new MemoryStore(), executor, new TestClock(Now));
+        await queue.InitializeAsync();
+        var waiting = await queue.EnqueueAsync(Job("waiting.bin") with { Priority = 10 });
+        var selected = await queue.EnqueueAsync(Job("selected.bin") with { Priority = -10 });
+        await queue.ChangeStateAsync(selected.Id, QueueJobState.Paused);
+
+        var queueName = await queue.RequestStartAsync(selected.Id);
+        await queue.RunReadyAsync(queueName);
+
+        Assert.Equal(new[] { selected.Id, waiting.Id }, executor.Executed);
+    }
+
+    [Fact]
+    public async Task ExplicitStartDoesNotBypassTheDownloadSchedule()
+    {
+        var clock = new TestClock(Now);
+        var executor = new FakeExecutor((_, _, _) => Task.CompletedTask);
+        var queue = new QueueCoordinator(new MemoryStore(), executor, clock);
+        await queue.InitializeAsync();
+        var scheduled = await queue.EnqueueAsync(Job("scheduled.bin") with { NotBefore = Now.AddMinutes(10) });
+        var ready = await queue.EnqueueAsync(Job("ready.bin"));
+
+        var queueName = await queue.RequestStartAsync(scheduled.Id);
+        await queue.RunReadyAsync(queueName);
+
+        Assert.Equal(ready.Id, Assert.Single(executor.Executed));
+        Assert.Equal(QueueJobState.Queued, (await queue.SnapshotAsync()).Single(job => job.Id == scheduled.Id).State);
+    }
+
+    [Fact]
     public async Task NamedQueuesRunIndependentlyAndHonorParallelDownloadLimit()
     {
         var store = new MemoryStore();
@@ -257,6 +290,7 @@ public class QueueTests
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var siblingStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finishStopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var selected = Job("selected.bin");
         var executor = new FakeExecutor(async (job, _, token) =>
@@ -265,7 +299,11 @@ public class QueueTests
             {
                 started.TrySetResult();
                 try { await Task.Delay(Timeout.Infinite, token); }
-                finally { stopping.TrySetResult(); }
+                finally
+                {
+                    stopping.TrySetResult();
+                    await finishStopping.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                }
             }
             else
             {
@@ -280,8 +318,13 @@ public class QueueTests
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var running = queue.RunReadyAsync(QueueJob.MainQueue, 2, token: deadline.Token);
         await Task.WhenAll(started.Task, siblingStarted.Task).WaitAsync(deadline.Token);
-        await queue.ChangeStateAsync(selected.Id, target, deadline.Token);
+        var stop = queue.ChangeStateAsync(selected.Id, target, deadline.Token);
         await stopping.Task.WaitAsync(deadline.Token);
+        Assert.False(stop.IsCompleted);
+        finishStopping.TrySetResult();
+        await stop;
+        Assert.Equal(target, (await queue.SnapshotAsync()).Single(job => job.Id == selected.Id).State);
+        Assert.False(running.IsCompleted);
         release.TrySetResult();
         await running;
         var jobs = (await queue.SnapshotAsync()).ToDictionary(job => job.Id);
@@ -345,8 +388,10 @@ public class QueueTests
         finally { Directory.Delete(directory, true); }
     }
 
-    [Fact]
-    public async Task ScheduledProtectedQueueRunsRealHttpDownloadAndRestoresCompletedHistory()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ScheduledProtectedQueueRunsRealHttpDownloadAndRestoresHistory(bool pauseAndReopen)
     {
         var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -356,6 +401,9 @@ public class QueueTests
         var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
         var payload = Enumerable.Range(0, 32768).Select(i => (byte)(i % 251)).ToArray();
         var connections = new System.Collections.Concurrent.ConcurrentBag<Task>();
+        var rangeStarts = new System.Collections.Concurrent.ConcurrentQueue<long>();
+        var secondRangeEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSecondRange = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var accept = AcceptAsync();
         try
         {
@@ -367,25 +415,50 @@ public class QueueTests
             {
                 var queue = new QueueCoordinator(store, new QueuedDownloadExecutor(), clock);
                 await queue.InitializeAsync(deadline.Token);
-                await queue.EnqueueAsync(Job(target) with
+                var job = await queue.EnqueueAsync(Job(target) with
                 {
                     Source = new($"http://127.0.0.1:{port}/fixture?signature=NEVER-PLAINTEXT"),
                     NotBefore = Now.AddMinutes(1),
-                    Options = new DownloadOptions { Workers = 2, MinimumRangeBytes = 4096, MaximumRangeBytes = 8192,
+                    Options = new DownloadOptions { Workers = 1, MinimumRangeBytes = 4096, MaximumRangeBytes = 4096,
                         ExpectedSha256 = Convert.ToHexString(SHA256.HashData(payload)) }
                 }, deadline.Token);
                 await queue.RunReadyAsync(token: deadline.Token);
                 Assert.Empty(connections);
                 clock.Now = Now.AddMinutes(1);
-                await queue.RunReadyAsync(token: deadline.Token);
-                Assert.Equal(payload, await File.ReadAllBytesAsync(target, deadline.Token));
-                Assert.Equal(QueueJobState.Completed, Assert.Single(await queue.SnapshotAsync()).State);
-                Assert.False(File.Exists(target + ".part.sqlite"));
+                var running = queue.RunReadyAsync(token: deadline.Token);
+                if (pauseAndReopen)
+                {
+                    await secondRangeEntered.Task.WaitAsync(deadline.Token);
+                    await queue.ChangeStateAsync(job.Id, QueueJobState.Paused, deadline.Token);
+                }
+                await running;
+                Assert.Equal(pauseAndReopen ? QueueJobState.Paused : QueueJobState.Completed,
+                    Assert.Single(await queue.SnapshotAsync(deadline.Token)).State);
+                if (pauseAndReopen)
+                {
+                    Assert.False(File.Exists(target));
+                    Assert.True(File.Exists(target + ".part.sqlite"));
+                    releaseSecondRange.TrySetResult();
+                }
             }
             using var restored = new QueueStore(path, protector);
+            if (pauseAndReopen)
+            {
+                var paused = Assert.Single(restored.Load());
+                Assert.Equal(QueueJobState.Paused, paused.State);
+                Assert.Equal(4096, paused.CompletedBytes);
+                var queue = new QueueCoordinator(restored, new QueuedDownloadExecutor(), clock);
+                await queue.InitializeAsync(deadline.Token);
+                await queue.ChangeStateAsync(paused.Id, QueueJobState.Queued, deadline.Token);
+                await queue.RunReadyAsync(token: deadline.Token);
+                Assert.Equal(1, rangeStarts.Count(start => start == 0));
+                Assert.Equal(2, rangeStarts.Count(start => start == 4096));
+            }
             var history = Assert.Single(restored.Load());
             Assert.Equal(QueueJobState.Completed, history.State);
             Assert.Equal(payload.Length, history.CompletedBytes);
+            Assert.Equal(payload, await File.ReadAllBytesAsync(target, deadline.Token));
+            Assert.False(File.Exists(target + ".part.sqlite"));
             Assert.DoesNotContain("NEVER-PLAINTEXT", Encoding.UTF8.GetString(await File.ReadAllBytesAsync(path, deadline.Token)));
         }
         finally
@@ -417,6 +490,15 @@ public class QueueTests
                     var bounds = line[13..].Split('-');
                     from = long.Parse(bounds[0], System.Globalization.CultureInfo.InvariantCulture);
                     to = long.Parse(bounds[1], System.Globalization.CultureInfo.InvariantCulture);
+                }
+                if (from != to)
+                {
+                    rangeStarts.Enqueue(from);
+                    if (pauseAndReopen && from == 4096)
+                    {
+                        secondRangeEntered.TrySetResult();
+                        await releaseSecondRange.Task.WaitAsync(deadline.Token);
+                    }
                 }
                 var headers = Encoding.ASCII.GetBytes($"HTTP/1.1 206 Partial Content\r\nETag: \"queue-v1\"\r\nContent-Range: bytes {from}-{to}/{payload.Length}\r\nContent-Length: {to - from + 1}\r\nConnection: close\r\n\r\n");
                 await stream.WriteAsync(headers, deadline.Token);

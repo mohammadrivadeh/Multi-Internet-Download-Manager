@@ -35,6 +35,14 @@ public sealed class QueueRow : ObservableObject
         if (job.State != QueueJobState.Running) LiveSpeed = "—";
         OnPropertyChanged(string.Empty);
     }
+    public void UpdateFromSnapshot(QueueJob value)
+    {
+        // The coordinator keeps durable byte counts in its snapshot until a worker stops.
+        // Preserve newer progress supplied by that worker while the job is still running.
+        if (job.State == QueueJobState.Running && value.State == QueueJobState.Running)
+            value = value with { CompletedBytes = job.CompletedBytes, TotalBytes = job.TotalBytes };
+        Update(value);
+    }
     public string Destination => Job.Destination;
     public string Origin => Job.Source.GetLeftPart(UriPartial.Authority);
     public string Checksum => Job.Options.ExpectedSha256 ?? "—";
@@ -63,8 +71,8 @@ public sealed class QueueRow : ObservableObject
             if (Job.ResumeDifferences != CheckpointDifferences.None)
             {
                 var fields = Enum.GetValues<CheckpointDifferences>()
-                    .Where(field => field != CheckpointDifferences.None && Job.ResumeDifferences.HasFlag(field))
-                    .Select(field => Desktop.Text($"CheckpointField{field}"));
+                    .Where(difference => difference != CheckpointDifferences.None && Job.ResumeDifferences.HasFlag(difference))
+                    .Select(difference => Desktop.Text($"CheckpointField{difference}"));
                 return string.Format(Desktop.Text("CheckpointMismatchMessage"), string.Join(", ", fields));
             }
             return Job.CheckpointCleanupPending ? Desktop.Text("CheckpointCleanupNotice") :

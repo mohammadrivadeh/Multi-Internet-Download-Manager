@@ -303,7 +303,7 @@ func captureAdapterAtIndex(index int) (uint64, error) {
 	return luid, nil
 }
 
-func addOwnedCaptureRoutes(index int) error {
+func addOwnedCaptureRoutes(index int, ipv4, ipv6 bool) error {
 	luid, err := captureAdapterAtIndex(index)
 	if err != nil {
 		return err
@@ -313,7 +313,7 @@ func addOwnedCaptureRoutes(index int) error {
 		return err
 	}
 	metric := 1024 + uint32(binary.LittleEndian.Uint16(token[:]))%64512
-	return installCaptureRoutes(machineRouteJournal{}, nativeRouteTable{luid: luid}, metric)
+	return installCaptureRoutes(machineRouteJournal{}, nativeRouteTable{luid: luid}, metric, ipv4, ipv6)
 }
 
 // RecoverCaptureRoutes reconciles only the desktop adapter's previously journaled routes.

@@ -61,7 +61,10 @@ func validateRecord(record routeRecord) error {
 	return nil
 }
 
-func installCaptureRoutes(journal routeJournal, table captureRouteTable, metric uint32) error {
+func installCaptureRoutes(journal routeJournal, table captureRouteTable, metric uint32, ipv4, ipv6 bool) error {
+	if !ipv4 && !ipv6 {
+		return errors.New("no egress address family selected for capture")
+	}
 	record, err := journal.load()
 	if err != nil {
 		return err
@@ -76,6 +79,9 @@ func installCaptureRoutes(journal routeJournal, table captureRouteTable, metric 
 		return errors.New("invalid capture route metric")
 	}
 	for _, prefix := range capturePrefixes {
+		if (prefix.Addr().Is4() && !ipv4) || (prefix.Addr().Is6() && !ipv6) {
+			continue
+		}
 		route := routeIntent{Prefix: prefix, Metric: metric}
 		state, err := table.inspect(route)
 		if err != nil {

@@ -150,15 +150,22 @@ public partial class MainViewModel
     }
 
     [RelayCommand(CanExecute = nameof(CanResumeSelected))]
-    private async Task ResumeSelectedAsync()
-    {
-        var name = SelectedJob?.Job.QueueName;
-        if (name is not null && await ChangeSelectedAsync(QueueJobState.Queued)) await StartQueueAsync(name);
-    }
+    private Task ResumeSelectedAsync() => RequestStartSelectedAsync();
+
     [RelayCommand(CanExecute = nameof(CanStartSelected))]
-    private async Task StartSelectedAsync()
+    private Task StartSelectedAsync() => RequestStartSelectedAsync();
+
+    private async Task RequestStartSelectedAsync()
     {
-        if (SelectedJob?.Job.QueueName is { } name) await StartQueueAsync(name);
+        if (queue is null || SelectedJob?.Job is not { } selected) return;
+        try
+        {
+            var name = await Task.Run(() => queue.RequestStartAsync(selected.Id));
+            await RefreshJobsAsync();
+            await StartQueueAsync(name);
+        }
+        catch (InvalidOperationException) { Status = Text("QueueActionError"); }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { Status = Text("QueueSaveError"); }
     }
     [RelayCommand(CanExecute = nameof(CanPauseSelected))]
     private async Task PauseSelectedAsync() => await ChangeSelectedAsync(QueueJobState.Paused);
@@ -243,7 +250,7 @@ public partial class MainViewModel
             }
             CategoryFilter = Categories.Any(c => c.Key == selectedCategory) ? selectedCategory : "";
             DownloadManager.App.Presentation.StableCollection.Reconcile(Jobs, snapshot.OrderByDescending(j => j.CreatedAt).ToArray(),
-                row => row.Job.Id, job => job.Id, job => new QueueRow(job, desktop), (row, job) => row.Update(job));
+                row => row.Job.Id, job => job.Id, job => new QueueRow(job, desktop), (row, job) => row.UpdateFromSnapshot(job));
             JobCount = Jobs.Count; CompletedCount = Jobs.Count(row => row.Job.State == QueueJobState.Completed);
             OnPropertyChanged(nameof(QueueStatuses));
             RefreshActionAvailability();

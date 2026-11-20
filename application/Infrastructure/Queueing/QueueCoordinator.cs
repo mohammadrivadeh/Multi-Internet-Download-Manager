@@ -8,7 +8,7 @@ public interface IQueuedDownloadExecutor
     Task ExecuteAsync(QueueJob job, IProgress<DownloadProgress>? progress, CancellationToken token);
 }
 
-/// <summary>Runs one complete job at a time within each named queue.</summary>
+/// <summary>Schedules downloads within each named queue's concurrency limit.</summary>
 public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor executor, TimeProvider? clock = null)
 {
     private readonly TimeProvider time = clock ?? TimeProvider.System;
@@ -17,6 +17,7 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
     private readonly Dictionary<Guid, QueueJob> jobs = [];
     private bool initialized;
     private readonly Dictionary<Guid, QueueJob> pendingWrites = [];
+    private readonly HashSet<Guid> startRequests = [];
 
     public async Task InitializeAsync(CancellationToken token = default)
     {
@@ -119,6 +120,7 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
 
     public async Task ChangeStateAsync(Guid id, QueueJobState next, CancellationToken token = default)
     {
+        Task<bool>? stopping = null;
         await gate.WaitAsync(token);
         try
         {
@@ -128,13 +130,40 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
                 activeJobs.TryGetValue(id, out var active))
             {
                 active.Stop(next);
-                return;
+                stopping = active.Completion;
             }
-            if (current.State == QueueJobState.Running || next == QueueJobState.Running)
-                throw new InvalidOperationException("Active jobs must stop through the runner.");
-            var changed = current.Transition(next);
-            store.Save(changed);
-            jobs[id] = changed;
+            else
+            {
+                if (current.State == QueueJobState.Running || next == QueueJobState.Running)
+                    throw new InvalidOperationException("Active jobs must stop through the runner.");
+                var changed = current.Transition(next);
+                store.Save(changed);
+                jobs[id] = changed;
+                startRequests.Remove(id);
+            }
+        }
+        finally { gate.Release(); }
+        if (stopping is not null && !await stopping.WaitAsync(token))
+            throw new IOException("The stopped download's state could not be saved.");
+    }
+
+    public async Task<string> RequestStartAsync(Guid id, CancellationToken token = default)
+    {
+        await gate.WaitAsync(token);
+        try
+        {
+            RequireWritable();
+            if (!jobs.TryGetValue(id, out var job))
+                throw new InvalidOperationException("The download no longer exists.");
+            if (job.State == QueueJobState.Running) return job.QueueName;
+            if (job.State != QueueJobState.Queued)
+            {
+                job = job.Transition(QueueJobState.Queued);
+                store.Save(job);
+                jobs[id] = job;
+            }
+            startRequests.Add(id);
+            return job.QueueName;
         }
         finally { gate.Release(); }
     }
@@ -144,7 +173,9 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
     private sealed class ActiveJob(CancellationToken queueToken) : IDisposable
     {
         private readonly CancellationTokenSource source = CancellationTokenSource.CreateLinkedTokenSource(queueToken);
+        private readonly TaskCompletionSource<bool> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public CancellationToken Token => source.Token;
+        public Task<bool> Completion => completion.Task;
         public QueueJobState? RequestedState { get; private set; }
         public Task Cancellation { get; private set; } = Task.CompletedTask;
 
@@ -158,6 +189,7 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
         }
 
         public void Dispose() => source.Dispose();
+        public void Complete(bool saved) => completion.TrySetResult(saved);
     }
 
     public async Task UpdateSettingsAsync(Guid id, QueueJobSettings settings, CancellationToken token = default)
@@ -229,10 +261,13 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
             try
             {
                 RequireWritable();
-                job = QueueScheduling.Next(jobs.Values.Where(j => string.Equals(j.QueueName, queueName, StringComparison.OrdinalIgnoreCase)), time.GetUtcNow());
+                var queueJobs = jobs.Values.Where(j => string.Equals(j.QueueName, queueName, StringComparison.OrdinalIgnoreCase));
+                var now = time.GetUtcNow();
+                job = QueueScheduling.Next(queueJobs.Where(j => startRequests.Contains(j.Id)), now) ?? QueueScheduling.Next(queueJobs, now);
                 if (job is null) return;
                 job = job.Transition(QueueJobState.Running);
                 store.Save(job); jobs[job.Id] = job;
+                startRequests.Remove(job.Id);
                 active = new ActiveJob(token);
                 activeJobs.Add(job.Id, active);
             }
@@ -272,6 +307,7 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
                     _ => "Failure"
                 };
             }
+            var saved = false;
             await gate.WaitAsync(CancellationToken.None);
             try
             {
@@ -283,12 +319,17 @@ public sealed class QueueCoordinator(IQueueStore store, IQueuedDownloadExecutor 
                         CheckpointCleanupPending = latest?.CheckpointCleanupPending ?? false, FailureCode = failure, ResumeDifferences = resumeDifferences };
                 jobs[job.Id] = job; pendingWrites[job.Id] = job;
                 store.Save(job); pendingWrites.Remove(job.Id);
+                saved = true;
             }
             finally
             {
                 gate.Release();
                 try { await active.Cancellation; }
-                finally { active.Dispose(); }
+                finally
+                {
+                    active.Dispose();
+                    active.Complete(saved);
+                }
             }
             if (terminal == QueueJobState.Queued || terminal == QueueJobState.Paused && active.RequestedState is null) return;
         }

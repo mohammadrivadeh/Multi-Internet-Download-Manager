@@ -20,18 +20,31 @@
                 </DockPanel>
             </Border>
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                <StackPanel Margin="20,12,20,14" IsEnabled="{Binding IsReady}">
+                <StackPanel Margin="20,12,20,14">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="IsEnabled" Value="{Binding IsReady}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding AddCommand.IsRunning}" Value="True">
+                                    <Setter Property="IsEnabled" Value="False"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
                     <Label Content="{DynamicResource UrlLabel}" Target="{Binding ElementName=UrlInput}"/>
                     <DockPanel Margin="0,4,0,10">
-                        <Button DockPanel.Dock="Right" Content="Paste" Click="PasteUrl" Margin="8,0,0,0" MinHeight="46" Padding="14,6"/>
+                        <Button DockPanel.Dock="Right" Click="PasteUrl" Margin="8,0,0,0" Width="48" MinHeight="48" Padding="0"
+                                ToolTip="{DynamicResource PasteLinkLabel}" AutomationProperties.Name="{DynamicResource PasteLinkLabel}">
+                            <TextBlock Text="&#xE77F;" FontFamily="{DynamicResource App.IconFont}" FontSize="18"/>
+                        </Button>
                         <TextBox x:Name="UrlInput" Text="{Binding Url, UpdateSourceTrigger=PropertyChanged}" Margin="0"
-                                 Height="46" Padding="12,8" VerticalContentAlignment="Center" AutomationProperties.Name="{DynamicResource UrlLabel}"/>
+                                 MinHeight="48" Padding="12,10" VerticalContentAlignment="Center" AutomationProperties.Name="{DynamicResource UrlLabel}"/>
                     </DockPanel>
                     <Label Content="{DynamicResource DestinationLabel}" Target="{Binding ElementName=DestinationInput}"/>
                     <DockPanel Margin="0,0,0,8">
                         <Button DockPanel.Dock="Right" Content="{DynamicResource BrowseLabel}" Command="{Binding BrowseCommand}"
-                                Margin="8,0,0,0" MinHeight="46" Padding="12,5"/>
-                        <TextBox x:Name="DestinationInput" Text="{Binding Destination, UpdateSourceTrigger=PropertyChanged}" Height="46" Padding="12,8"
+                                Margin="8,0,0,0" MinHeight="48" Padding="12,5"/>
+                        <TextBox x:Name="DestinationInput" Text="{Binding Destination, UpdateSourceTrigger=PropertyChanged}" MinHeight="48" Padding="12,10"
                                  Margin="0" VerticalContentAlignment="Center" AutomationProperties.Name="{DynamicResource DestinationLabel}"/>
                     </DockPanel>
                     <Grid>
@@ -60,8 +73,19 @@
                     BorderThickness="0,1,0,0" Padding="20,10">
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button Content="Cancel" IsCancel="True" Margin="0,0,8,0"/>
-                    <Button x:Name="SubmitButton" Content="Start download" IsDefault="True" Click="SubmitClick"
-                            Style="{StaticResource PrimaryButton}" Margin="0"/>
+                    <Button IsDefault="True" Click="SubmitClick" Margin="0">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource PrimaryButton}">
+                                <Setter Property="Content" Value="{DynamicResource StartDownloadLabel}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding AddCommand.IsRunning}" Value="True">
+                                        <Setter Property="Content" Value="{DynamicResource StartingDownloadLabel}"/>
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
                 </StackPanel>
             </Border>
         </Grid>

@@ -9,7 +9,7 @@ internal sealed class DownloadTrace : IAsyncDisposable
 
     internal DownloadTrace(Guid job, int pathCount, IReadOnlyList<int>? indices)
     {
-        paths = Enumerable.Range(0, pathCount).Select(i => new DownloadPathTrace(job, indices?[i])).ToArray();
+        paths = Enumerable.Range(0, pathCount).Select(i => new DownloadPathTrace(job, i + 1, indices?[i])).ToArray();
         timer = new Timer(_ => Sample(false), null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
     }
 
@@ -27,19 +27,21 @@ internal sealed class DownloadTrace : IAsyncDisposable
     }
 }
 
-internal sealed class DownloadPathTrace(Guid job, int? index)
+internal sealed class DownloadPathTrace(Guid job, int ordinal, int? index)
 {
     private static readonly AsyncLocal<DownloadPathTrace?> Context = new();
     internal static DownloadPathTrace? Current => Context.Value;
     internal static readonly HttpRequestOptionsKey<string> RequestContext = new("DownloadManager.JobPath");
-    internal string Detail { get; } = $"job={job:N} path={(index.HasValue ? $"interface-{index}" : "system")}";
+    internal string Detail { get; } = $"job={job:N} path={ordinal} interface={(index.HasValue ? index.Value.ToString() : "system")}";
     private long received;
+    private long checkpointed;
     private int retries;
     private int active;
     private readonly Stopwatch sampleClock = Stopwatch.StartNew();
     private long previousBytes;
 
     internal void Receive(int count) => Interlocked.Add(ref received, count);
+    internal void Checkpoint(long bytes) => Interlocked.Add(ref checkpointed, bytes);
 
     internal IDisposable Enter()
     {
@@ -64,13 +66,16 @@ internal sealed class DownloadPathTrace(Guid job, int? index)
         LocalDiagnostics.Record("download-retry", error, $"{Detail} attempt={attempt}");
     }
 
+    internal void PathFailed(Exception error, string phase) =>
+        LocalDiagnostics.Record("download-path-retired", error, $"{Detail} phase={phase}");
+
     internal void Sample(bool final)
     {
         lock (sampleClock)
         {
             long bytes = Interlocked.Read(ref received);
             var rate = (long)((bytes - previousBytes) / Math.Max(sampleClock.Elapsed.TotalSeconds, .001));
-            LocalDiagnostics.Trace("download-path-sample", $"{Detail} payload_bytes={bytes} bytes_per_second={rate} active_operations={Volatile.Read(ref active)} retries={Volatile.Read(ref retries)} final={final}");
+            LocalDiagnostics.Trace("download-path-sample", $"{Detail} payload_bytes={bytes} checkpointed_bytes={Interlocked.Read(ref checkpointed)} payload_bytes_per_second={rate} active_operations={Volatile.Read(ref active)} retries={Volatile.Read(ref retries)} final={final}");
             previousBytes = bytes;
             sampleClock.Restart();
         }

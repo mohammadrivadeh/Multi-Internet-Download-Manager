@@ -4,6 +4,9 @@ using DownloadManager.Infrastructure.Diagnostics;
 
 namespace DownloadManager.Infrastructure.Networking;
 
+internal sealed class NetworkPathChangedException()
+    : InvalidOperationException("Selected path changed or is offline. Rediscover and create a new probe.");
+
 internal sealed class WindowsPathConnector(NetworkPath path, INetworkPathCatalog catalog)
 {
     internal static int GetInterfaceOptionValue(AddressFamily family, int index)
@@ -18,10 +21,12 @@ internal sealed class WindowsPathConnector(NetworkPath path, INetworkPathCatalog
         };
     }
 
+    internal bool IsCurrent() => catalog.Discover().Contains(path);
+
     internal void EnsureCurrent()
     {
-        if (!catalog.Discover().Contains(path))
-            throw new InvalidOperationException("Selected path changed or is offline. Rediscover and create a new probe.");
+        if (!IsCurrent())
+            throw new NetworkPathChangedException();
     }
 
     internal async ValueTask<Stream> ConnectAsync(SocketsHttpConnectionContext context, CancellationToken cancellationToken)

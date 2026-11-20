@@ -1,6 +1,6 @@
 # Phase 1: independent egress proof procedure
 
-Status: initial discovery/probe harness implemented; Windows execution and independent egress proof pending. Requires Windows 10/11 x64 and independently connected interfaces. This Linux environment cannot close the gate.
+The discovery, probe and download harnesses are implemented. Independent egress and speedup still require measurements on Windows 10/11 x64 with independently connected interfaces.
 
 ## Harness requirements
 
@@ -49,4 +49,29 @@ Disconnect/reconnect an adapter during `/stall`: expect cancellation; rediscover
 
 ## Results to return
 
-Copy `docs/testing/windows-results-template.md` to a new local results file, fill exact OS builds/topology, commands, sanitized output and packet/server observations, and retain failed/unrun cases. Tests of two separate probes show individual path selection only. Simultaneous aggregation and scheduler performance belong to later phases and are not implemented yet.
+Copy `docs/testing/windows-results-template.md` to a new local results file, fill exact OS builds/topology, commands, sanitized output and packet/server observations, and retain failed/unrun cases. Two separate probes establish individual path selection. Use a combined download to measure simultaneous use.
+
+## Compare single-path and combined downloads
+
+Use a controlled origin reachable over both selected Internet connections. Start it with a fixture large enough for multiple ranges. The example serves 64 MiB and retains the same bytes and strong ETag for every trial using that size.
+
+```powershell
+dotnet run --project tests/TestServer -c Debug -- --urls http://0.0.0.0:5099 --fixture-bytes 67108864
+```
+
+From the Windows client, list the adapter IDs and source addresses with `NetworkProbe list`. Keep the same origin and total worker count for each trial. Use fresh destination names and repeat the three trials to compare median times.
+
+```powershell
+$origin = 'http://CONTROLLED-SERVER:5099'
+$source = "$origin/fixture"
+$adapterA = 'FIRST-ADAPTER-ID'
+$addressA = 'FIRST-SOURCE-ADDRESS'
+$adapterB = 'SECOND-ADAPTER-ID'
+$addressB = 'SECOND-SOURCE-ADDRESS'
+(Invoke-RestMethod "$origin/fixture-info").fullSha256
+dotnet run --project tests/DownloadHarness -c Debug -- paths $source ./only-a.bin 8 $adapterA $addressA
+dotnet run --project tests/DownloadHarness -c Debug -- paths $source ./only-b.bin 8 $adapterB $addressB
+dotnet run --project tests/DownloadHarness -c Debug -- paths $source ./both.bin 8 $adapterA $addressA $adapterB $addressB
+```
+
+Compare each reported SHA-256 to the fixture hash. Match the printed job ID with per-interface byte counts and failover events in the diagnostics log. Confirm concurrent traffic on the two selected interfaces using packet capture or server timing, and record whether the combined download beat the faster single path. Repeat the combined trial while disconnecting one test adapter after both have carried payload. Verify the surviving path finishes the download and that the final hash still matches. A loopback transfer verifies HTTP and file handling. Actual adapter routing and speed measurements require the physical interfaces.

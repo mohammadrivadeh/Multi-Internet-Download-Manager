@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -22,6 +23,8 @@ const adapterName = "Multi-Internet Balancer"
 
 var pipeName = regexp.MustCompile(`^multi-internet-balancer-[0-9a-f]{32}$`)
 
+const controlWriteTimeout = 3 * time.Second
+
 func main() {
 	if len(os.Args) < 4 || len(os.Args) > 131 || !pipeName.MatchString(os.Args[1]) || !platform.IsAdmin() {
 		os.Exit(1)
@@ -40,7 +43,7 @@ func main() {
 		if len(message) > 1500 {
 			message = message[:1500]
 		}
-		fmt.Fprintf(pipe, "ERROR %s\n", message)
+		_ = writeControl(pipe, "ERROR %s\n", message)
 		pipe.Close()
 		os.Exit(1)
 	}
@@ -64,7 +67,17 @@ func openControlPipe(name string, parent uint32) (*os.File, error) {
 	return os.NewFile(uintptr(handle), name), nil
 }
 
-func runCapture(pipe io.ReadWriter, selections []string) error {
+func writeControl(pipe io.Writer, format string, args ...any) error {
+	if deadline, ok := pipe.(interface{ SetWriteDeadline(time.Time) error }); ok {
+		if err := deadline.SetWriteDeadline(time.Now().Add(controlWriteTimeout)); err != nil {
+			return err
+		}
+	}
+	_, err := fmt.Fprintf(pipe, format, args...)
+	return err
+}
+
+func runCapture(pipe io.ReadWriter, selections []string) (result error) {
 	var authorize [1]byte
 	if _, err := io.ReadFull(pipe, authorize[:]); err != nil || authorize[0] != 'A' {
 		return fmt.Errorf("desktop did not authorize this capture session")
@@ -114,27 +127,47 @@ func runCapture(pipe io.ReadWriter, selections []string) error {
 	if err != nil {
 		return err
 	}
+	families := availableFamilies(adapters)
+	selectedIndices := make(map[string]int, len(adapters))
+	for _, adapter := range adapters {
+		selectedIndices[adapter.Name] = adapter.Index
+	}
 	scheduler := engine.NewScheduler(adapters)
 	scheduler.SetAuto(true)
 	balancer := engine.NewBalancer(scheduler)
-	balancer.SetV6Mode(engine.V6Auto)
+	balancer.SetV6Mode(engine.V6On)
 	if stopped(stop) {
-		_, err := fmt.Fprintln(pipe, "STOPPED")
-		return err
+		return writeControl(pipe, "STOPPED\n")
 	}
 
 	capture := tun.New(balancer)
-	if err := capture.On(); err != nil {
+	if err := capture.OnFamilies(families.ipv4, families.ipv6); err != nil {
 		if cleanup := waitAdapterRemoval(); cleanup != nil {
 			return fmt.Errorf("could not start capture: %v; %w", err, cleanup)
 		}
 		return fmt.Errorf("could not start capture: %w", err)
 	}
-	defer capture.Close()
-	if stopped(stop) {
-		return stopCapture(capture, pipe)
+	cleanup := func() error {
+		capture.Close()
+		return waitAdapterRemoval()
 	}
-	if _, err := fmt.Fprintln(pipe, "READY"); err != nil {
+	cleaned := false
+	defer func() {
+		if !cleaned {
+			result = errors.Join(result, cleanup())
+		}
+	}()
+	stopCapture := func() error {
+		cleaned = true
+		if err := cleanup(); err != nil {
+			return err
+		}
+		return writeControl(pipe, "STOPPED\n")
+	}
+	if stopped(stop) {
+		return stopCapture()
+	}
+	if err := writeControl(pipe, "READY\n"); err != nil {
 		return err
 	}
 	go scheduler.RunProbes(stop)
@@ -146,43 +179,60 @@ func runCapture(pipe io.ReadWriter, selections []string) error {
 	for {
 		select {
 		case <-stop:
-			return stopCapture(capture, pipe)
+			return stopCapture()
 		case now := <-tick.C:
 			scheduler.Tick(now.Sub(last))
 			last = now
 		case <-pollAdapters.C:
 			current, discoveryError := selectedAdapters(selected)
-			if discoveryError != nil || len(current) == 0 || checkStrongHost(current) != nil {
-				capture.Close()
-				if cleanup := waitAdapterRemoval(); cleanup != nil {
-					return fmt.Errorf("adapter configuration changed; %w", cleanup)
+			if discoveryError == nil {
+				discoveryError = checkStrongHost(current)
+			}
+			if discoveryError == nil && !availableFamilies(current).covers(families) {
+				discoveryError = fmt.Errorf("a captured address family lost all selected egress adapters")
+			}
+			if discoveryError != nil {
+				cleaned = true
+				if err := cleanup(); err != nil {
+					return fmt.Errorf("adapter check failed: %v; %w", discoveryError, err)
 				}
-				return fmt.Errorf("no safe selected adapter remains or Windows could not verify it; capture was stopped")
+				return fmt.Errorf("capture stopped and routes were restored: %w", discoveryError)
 			}
 			scheduler.Update(current)
+			reported := make(map[int]bool, len(selected))
 			for _, link := range scheduler.Snapshot() {
-				for _, adapter := range current {
-					if adapter.Name != link.Name {
-						continue
-					}
-					if _, err := fmt.Fprintf(pipe, "STATS interface=%d active=%d total=%d failed=%d received=%d sent=%d receive_bps=%.0f send_bps=%.0f\n",
-						adapter.Index, link.Active, link.Total, link.Failed, link.BytesIn, link.BytesOut, link.RateIn, link.RateOut); err != nil {
+				index := selectedIndices[link.Name]
+				reported[index] = true
+				if err := writeControl(pipe, "STATS interface=%d present=%t ipv4=%q ipv6=%q weight4=%.2f weight6=%.2f active=%d total=%d failed=%d received=%d sent=%d receive_bytes_per_second=%.0f send_bytes_per_second=%.0f\n",
+					index, link.Present, link.State, link.State6, link.Weight, link.Weight6, link.Active, link.Total,
+					link.Failed, link.BytesIn, link.BytesOut, link.RateIn, link.RateOut); err != nil {
+					return err
+				}
+			}
+			for index := range selected {
+				if !reported[index] {
+					if err := writeControl(pipe, "STATS interface=%d present=false\n", index); err != nil {
 						return err
 					}
-					break
 				}
 			}
 		}
 	}
 }
 
-func stopCapture(capture *tun.Tun, pipe io.Writer) error {
-	capture.Close()
-	if err := waitAdapterRemoval(); err != nil {
-		return err
+type addressFamilies struct{ ipv4, ipv6 bool }
+
+func availableFamilies(adapters []nics.Nic) addressFamilies {
+	var families addressFamilies
+	for _, adapter := range adapters {
+		families.ipv4 = families.ipv4 || adapter.IP != nil
+		families.ipv6 = families.ipv6 || adapter.IP6 != nil
 	}
-	_, err := fmt.Fprintln(pipe, "STOPPED")
-	return err
+	return families
+}
+
+func (current addressFamilies) covers(captured addressFamilies) bool {
+	return (!captured.ipv4 || current.ipv4) && (!captured.ipv6 || current.ipv6)
 }
 
 func waitAdapterRemoval() error {

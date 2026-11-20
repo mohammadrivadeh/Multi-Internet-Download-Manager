@@ -148,7 +148,7 @@
                         </StackPanel>
                         <WrapPanel Grid.Column="1" VerticalAlignment="Center"
                                    Visibility="{Binding IsDownloadsPage, Converter={StaticResource BooleanToVisibilityConverter}}">
-                            <Button Click="NewDownloadClick" IsEnabled="{Binding IsReady}" Style="{StaticResource PrimaryButton}" AutomationProperties.Name="{DynamicResource NewDownloadSectionLabel}"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE710;" FontFamily="{DynamicResource App.IconFont}" Margin="0,0,8,0"/><TextBlock Text="{DynamicResource NewDownloadSectionLabel}"/></StackPanel></Button>
+                            <Button Click="NewDownloadClick" IsEnabled="{Binding CanOpenNewDownload}" Style="{StaticResource PrimaryButton}" AutomationProperties.Name="{DynamicResource NewDownloadSectionLabel}"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE710;" FontFamily="{DynamicResource App.IconFont}" Margin="0,0,8,0"/><TextBlock Text="{DynamicResource NewDownloadSectionLabel}"/></StackPanel></Button>
                         </WrapPanel>
                     </Grid>
                     <Grid Grid.Row="1">

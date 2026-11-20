@@ -1,5 +1,12 @@
 # Development status
 
+Current reliability work is tracked in the [Network Balancer and download reliability plan](BALANCER-IMPROVEMENT-PLAN.md). See [ADR 0019](decisions/0019-selected-path-recovery.md) for the ranged download path recovery contract.
+
+- A ranged download can continue on other selected, validated paths when one path drops. Job cancellation still stops every worker. Per-job logs record retired paths, retry payload, and newly checkpointed bytes.
+- The preview host configures and journals only the IP families it captures. It initiates cleanup when the last egress for a captured family disappears. Physical IPv4/IPv6 routing and forced-exit recovery still need VM acceptance.
+- The New Download dialog uses a fade and gives its fields more space. Start and Resume prioritize the selected job within queue and schedule limits. Stop waits for the selected transfer to release its writer and persist its final state.
+- Validation passed for the Debug solution, 171 .NET tests, the pinned upstream Go suite, the adapted Windows route and capture tests, and the WPF preview build. A 16 MiB loopback download matched the fixture checksum. The available Windows machine had one eligible adapter, so physical aggregation, throughput improvement and live route recovery remain unverified.
+
 ## Windows balancer pivot
 
 Updated 2026-11-20. [ADR 0018](decisions/0018-windows-network-balancer.md) records the migration from segmented downloads to system-wide per-flow balancing.

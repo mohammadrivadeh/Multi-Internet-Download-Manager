@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"golang.org/x/sys/windows"
+	"net-merge/internal/nics"
 )
 
 func TestCaptureRejectsMissingAuthorization(t *testing.T) {
@@ -17,6 +19,30 @@ func TestCaptureRejectsMissingAuthorization(t *testing.T) {
 		err := runCapture(bytes.NewBufferString(input), nil)
 		if err == nil || !strings.Contains(err.Error(), "did not authorize") {
 			t.Fatalf("input %q returned %v", input, err)
+		}
+	}
+}
+
+func TestCapturedFamiliesRequireAtLeastOneCompatibleSelectedAdapter(t *testing.T) {
+	ipv4 := nics.Nic{IP: net.IPv4(192, 0, 2, 5)}
+	ipv6 := nics.Nic{IP6: net.ParseIP("2001:db8::5")}
+	dual := nics.Nic{IP: ipv4.IP, IP6: ipv6.IP6}
+	captured := availableFamilies([]nics.Nic{ipv4, ipv6})
+	if captured != (addressFamilies{ipv4: true, ipv6: true}) {
+		t.Fatalf("mixed adapter families = %+v", captured)
+	}
+	for _, check := range []struct {
+		active []nics.Nic
+		want   bool
+	}{
+		{[]nics.Nic{ipv4, ipv6}, true},
+		{[]nics.Nic{dual}, true},
+		{[]nics.Nic{ipv4}, false},
+		{[]nics.Nic{ipv6}, false},
+		{nil, false},
+	} {
+		if got := availableFamilies(check.active).covers(captured); got != check.want {
+			t.Errorf("active set %+v covers capture = %v, want %v", check.active, got, check.want)
 		}
 	}
 }
@@ -66,7 +92,7 @@ func TestControlPipeAllowsStatusWhileReadingStop(t *testing.T) {
 		}
 		stop <- err
 	}()
-	if _, err := client.Write([]byte("READY\n")); err != nil {
+	if err := writeControl(client, "READY\n"); err != nil {
 		t.Fatal(err)
 	}
 	var status [6]byte

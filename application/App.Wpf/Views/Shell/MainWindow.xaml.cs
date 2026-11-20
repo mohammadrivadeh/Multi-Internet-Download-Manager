@@ -49,10 +49,12 @@ public partial class MainWindow : Window
     }
     private void NewDownloadClick(object sender, RoutedEventArgs e)
     {
+        if (!viewModel.CanOpenNewDownload) return;
         Navigate("Downloads");
         viewModel.PrepareNewDownload();
         var dialog = EditorDialogs.Create(this, "New download", new NewDownloadView(), 560, hasOwnHeader: true);
         dialog.DataContext = viewModel;
+        dialog.Closing += (_, args) => args.Cancel = viewModel.AddCommand.IsRunning;
         dialog.ShowDialog();
     }
     private async void CategorySettingsClick(object sender, RoutedEventArgs e)

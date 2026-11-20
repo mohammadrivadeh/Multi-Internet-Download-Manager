@@ -12,7 +12,7 @@
             <Setter Property="FontFamily" Value="{DynamicResource App.FontFamily}"/>
         </Style>
     </UserControl.Resources>
-    <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
             <DockPanel Grid.Row="0">
                 <ComboBox SelectedValue="{Binding StateFilter}" SelectedValuePath="Tag" DockPanel.Dock="Right" Width="145" Margin="0,0,7,5" VerticalAlignment="Center"
                           ToolTip="Filter by download status" AutomationProperties.Name="Download status">
@@ -35,9 +35,8 @@
                     </Style>
                 </WrapPanel.Resources>
                 <Button Command="{Binding StartSelectedCommand}" ToolTip="Start download" AutomationProperties.Name="Start download"><TextBlock Text="&#xE768;" FontFamily="{DynamicResource App.IconFont}"/></Button>
-                <Button Command="{Binding PauseSelectedCommand}" ToolTip="Pause download" AutomationProperties.Name="Pause download"><TextBlock Text="&#xE769;" FontFamily="{DynamicResource App.IconFont}"/></Button>
                 <Button Command="{Binding ResumeSelectedCommand}" ToolTip="Resume download" AutomationProperties.Name="Resume download"><TextBlock Text="&#xE893;" FontFamily="{DynamicResource App.IconFont}"/></Button>
-                <Button Command="{Binding PauseSelectedCommand}" ToolTip="Stop download (can resume)" AutomationProperties.Name="Stop download"><TextBlock Text="&#xE71A;" FontFamily="{DynamicResource App.IconFont}"/></Button>
+                <Button Command="{Binding PauseSelectedCommand}" ToolTip="{DynamicResource StopDownloadLabel}" AutomationProperties.Name="{DynamicResource StopDownloadLabel}"><TextBlock Text="&#xE71A;" FontFamily="{DynamicResource App.IconFont}"/></Button>
                 <Button Command="{Binding RedownloadSelectedCommand}" ToolTip="Redownload from zero" AutomationProperties.Name="Redownload from zero"><TextBlock Text="&#xE72C;" FontFamily="{DynamicResource App.IconFont}"/></Button>
                 <Button Command="{Binding RetryQueueSaveCommand}" ToolTip="{DynamicResource RetryQueueSaveLabel}" AutomationProperties.Name="{DynamicResource RetryQueueSaveLabel}"><TextBlock Text="&#xE74E;" FontFamily="{DynamicResource App.IconFont}"/></Button>
                 <Button Command="{Binding ClearHistoryCommand}" ToolTip="{DynamicResource ClearHistoryLabel}" AutomationProperties.Name="{DynamicResource ClearHistoryLabel}"><TextBlock Text="&#xE74D;" FontFamily="{DynamicResource App.IconFont}"/></Button>
@@ -57,13 +56,10 @@
                         <MenuItem Header="Start" Command="{Binding StartSelectedCommand}">
                             <MenuItem.Icon><TextBlock Text="&#xE768;" FontFamily="{DynamicResource App.IconFont}"/></MenuItem.Icon>
                         </MenuItem>
-                        <MenuItem Header="Pause" Command="{Binding PauseSelectedCommand}">
-                            <MenuItem.Icon><TextBlock Text="&#xE769;" FontFamily="{DynamicResource App.IconFont}"/></MenuItem.Icon>
-                        </MenuItem>
                         <MenuItem Header="Resume" Command="{Binding ResumeSelectedCommand}">
                             <MenuItem.Icon><TextBlock Text="&#xE893;" FontFamily="{DynamicResource App.IconFont}"/></MenuItem.Icon>
                         </MenuItem>
-                        <MenuItem Header="Stop (can resume)" Command="{Binding PauseSelectedCommand}">
+                        <MenuItem Header="{DynamicResource StopDownloadLabel}" Command="{Binding PauseSelectedCommand}">
                             <MenuItem.Icon><TextBlock Text="&#xE71A;" FontFamily="{DynamicResource App.IconFont}"/></MenuItem.Icon>
                         </MenuItem>
                         <MenuItem Header="Cancel download" Command="{Binding CancelSelectedCommand}"/>
@@ -126,5 +122,7 @@
                 <Border.Style><Style TargetType="Border"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding HasVisibleJobs}" Value="False"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></Border.Style>
                 <TextBlock Text="{DynamicResource EmptyQueueLabel}" TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
+            <TextBlock Grid.Row="3" Text="{Binding Status}" Foreground="{DynamicResource App.TextMuted}"
+                       TextTrimming="CharacterEllipsis" ToolTip="{Binding Status}" Margin="0,10,0,0"/>
         </Grid>
 </UserControl>

@@ -89,22 +89,64 @@ try {
         Get-ChildItem -LiteralPath $PSScriptRoot -Filter 'route_*.go' | Copy-Item -Destination (Join-Path $source 'internal/tun')
         Update-Source $tun 'tunName = "net-merge"' 'tunName = "Multi-Internet Balancer"'
         Update-Source $tun "`tCleanupStale()" ''
-        Update-Source $tunWindows "`tstartStrongHost(ifc.Index)" ''
-        Update-Source $tunWindows "`tidx := strconv.Itoa(ifc.Index)" @'
+        Update-Source $tun 'func (t *Tun) On() (err error) {' @'
+func (t *Tun) On() error {
+	return t.OnFamilies(true, true)
+}
+
+func (t *Tun) OnFamilies(ipv4, ipv6 bool) (err error) {
+'@
+        Update-Source $tun 'configure(t.dev.Name(), t.MTU, ip4)' 'configure(t.dev.Name(), t.MTU, ip4, ipv4, ipv6)'
+        Update-SourceRegion $tunWindows 'func configure(' 'func run(' @'
+func configure(name string, mtu int, ip4 netip.Prefix, ipv4, ipv6 bool) (int, error) {
+	ifc, err := waitIface(name, 5*time.Second)
+	if err != nil {
+		return 0, err
+	}
 	if _, err := captureAdapterAtIndex(ifc.Index); err != nil {
 		return 0, err
 	}
 	idx := strconv.Itoa(ifc.Index)
-'@
-        Update-SourceRegion $tunWindows "`tfor _, dst := range routes4win {" "`tif e := run(`"netsh`", `"interface`", `"ipv6`", `"add`", `"address`"" ''
-        Update-SourceRegion $tunWindows "`t`tfor _, p := range routes6 {" "`treturn ifc.Index, nil" @'
+	mtuArg := "mtu=" + strconv.Itoa(mtu)
+	if ipv4 {
+		addr := ip4.Addr().String()
+		mask := net.IP(net.CIDRMask(ip4.Bits(), 32)).String()
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			err := run("netsh", "interface", "ipv4", "set", "address", "name="+idx, "source=static",
+				"address="+addr, "mask="+mask, "store=active")
+			for i := 0; i < 4 && !hasAddr(ifc, addr); i++ {
+				time.Sleep(250 * time.Millisecond)
+			}
+			if hasAddr(ifc, addr) {
+				break
+			}
+			if time.Now().After(deadline) {
+				if err == nil {
+					err = fmt.Errorf("the capture adapter did not keep its IPv4 address")
+				}
+				return ifc.Index, err
+			}
+		}
+		if err := run("netsh", "interface", "ipv4", "set", "subinterface", "interface="+idx, mtuArg, "store=active"); err != nil {
+			return ifc.Index, err
+		}
 	}
-	if err := addOwnedCaptureRoutes(ifc.Index); err != nil {
+	if ipv6 {
+		if err := run("netsh", "interface", "ipv6", "add", "address", "interface="+idx,
+			"address="+tunIP6+"/64", "store=active"); err != nil {
+			return ifc.Index, err
+		}
+		if err := run("netsh", "interface", "ipv6", "set", "subinterface", "interface="+idx, mtuArg, "store=active"); err != nil {
+			return ifc.Index, err
+		}
+	}
+	if err := addOwnedCaptureRoutes(ifc.Index, ipv4, ipv6); err != nil {
 		return ifc.Index, err
 	}
+	return ifc.Index, nil
+}
 
-'@
-        Update-SourceRegion $tunWindows 'func delRoutes(' 'func run(' @'
 func delRoutes(_ int) {
 	if err := RecoverCaptureRoutes(); err != nil {
 		logx.Printf("capture route recovery: %v\n", err)
@@ -112,9 +154,8 @@ func delRoutes(_ int) {
 }
 
 '@
-        Update-Source $tunWindows 'logx.Printf("warning: could not set IPv4 MTU: %v\n", e)' 'return ifc.Index, e'
-        Update-Source $tunWindows 'logx.Printf("warning: IPv6 not captured: %v\n", e)' 'return ifc.Index, e'
-        Update-Source $tunWindows 'logx.Printf("warning: could not set IPv6 MTU: %v\n", e)' 'return ifc.Index, e'
+        Update-Source $tunWindows "import (" "import (
+	""context"""
         Update-Source $tunWindows 'windows.GUIDFromString("{3f0d5a7e-9b1c-4e52-8a47-1c6b2d9e5f30}")' 'windows.GUIDFromString(captureGUID)'
         Update-Source $tunWindows 'wun.WintunTunnelType = "net-merge"' 'wun.WintunTunnelType = "Multi-Internet Balancer"'
         Update-Source $tunWindows 'cmd := exec.Command(name, args...)' @'
@@ -122,7 +163,9 @@ func delRoutes(_ int) {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(filepath.Join(system, name+".exe"), args...)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, filepath.Join(system, name+".exe"), args...)
 '@
         if ($Test) { Invoke-Native $goExecutable @('test', '-mod=readonly', './internal/tun', './cmd/desktop-capture') }
         Invoke-Native $goExecutable @('build', '-mod=readonly', '-trimpath', '-buildvcs=false',

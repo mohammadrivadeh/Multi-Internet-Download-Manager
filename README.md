@@ -1,12 +1,12 @@
 # Multi-Internet Download Manager
 
-This project is moving toward a Windows system-wide network balancer based on net-merge. The WPF app opens on Network Balancer and can scan eligible adapters when built with the upstream diagnostics helper. An opt-in build adds Start and Stop for testing capture in an isolated Windows VM. The [balancer migration plan](docs/decisions/0018-windows-network-balancer.md) covers preview build instructions, route recovery, and pending Windows acceptance.
+The WPF app opens on Network Balancer, inventories Windows adapters, and samples eligible connections. Downloads can distribute validated byte ranges across selected adapters. The optional net-merge preview balances independent Windows connections. See the [reliability plan](docs/BALANCER-IMPROVEMENT-PLAN.md) and the [capture preview instructions](docs/decisions/0018-windows-network-balancer.md).
 
 The Downloads and Queue views provide the segmented downloader described in the [original downloader plan](AGENTIC_DEVELOPMENT_PLAN.md).
 
 ## Available now
 
-- Explicit adapter/address selection with isolated Windows HTTP/1.1 pools; system-route mode is an explicit alternative.
+- Explicit adapter/address selection with isolated Windows HTTP/1.1 pools and recovery across surviving selected paths. The engine also supports an explicit system-route mode.
 - Real range probing, representation checks across selected paths and a bounded lazy range allocator.
 - 1–128 workers with measured per-worker range sizing. Faster workers claim new work; active-tail splitting is not yet implemented.
 - Validated range responses and offset writes, bounded retry/backoff, header/read deadlines and 429/503 handling.

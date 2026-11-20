@@ -41,6 +41,10 @@ public interface INetworkPathCatalog
 
 public sealed class NetworkPathCatalog : INetworkPathCatalog
 {
+    public static NetworkPath? ResolveSelected(IReadOnlyList<NetworkPath> paths, string adapterId, IPAddress address) =>
+        paths.FirstOrDefault(path => string.Equals(path.AdapterId, adapterId, StringComparison.OrdinalIgnoreCase)
+            && path.SourceAddress.Equals(address));
+
     public IReadOnlyList<NetworkPath> Discover()
     {
         var paths = new List<NetworkPath>();
@@ -48,20 +52,35 @@ public sealed class NetworkPathCatalog : INetworkPathCatalog
         {
             if (adapter.OperationalStatus != OperationalStatus.Up || adapter.NetworkInterfaceType == NetworkInterfaceType.Loopback)
                 continue;
-            var properties = adapter.GetIPProperties();
-            var ipv4 = adapter.Supports(NetworkInterfaceComponent.IPv4) ? properties.GetIPv4Properties()?.Index : null;
-            var ipv6 = adapter.Supports(NetworkInterfaceComponent.IPv6) ? properties.GetIPv6Properties()?.Index : null;
-            var addresses = properties.UnicastAddresses.Select(a => a.Address).OrderBy(a => a.ToString(), StringComparer.Ordinal).ToArray();
-            // An immutable configuration fingerprint; not a monotonic reconnect counter.
-            var generation = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
-                System.Text.Encoding.UTF8.GetBytes($"{adapter.Id}|{ipv4}|{ipv6}|{string.Join(',', addresses.Select(a => a.ToString()))}")));
-            foreach (var address in addresses)
+            try
             {
-                var index = address.AddressFamily == AddressFamily.InterNetwork ? ipv4 : ipv6;
-                if (index is > 0 && !IPAddress.IsLoopback(address))
-                    paths.Add(new(adapter.Id, adapter.Name, address, index.Value, generation));
+                var properties = adapter.GetIPProperties();
+                var ipv4 = ReadIndex(adapter, properties, NetworkInterfaceComponent.IPv4);
+                var ipv6 = ReadIndex(adapter, properties, NetworkInterfaceComponent.IPv6);
+                var addresses = properties.UnicastAddresses.Select(a => a.Address).OrderBy(a => a.ToString(), StringComparer.Ordinal).ToArray();
+                // An immutable configuration fingerprint; not a monotonic reconnect counter.
+                var generation = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                    System.Text.Encoding.UTF8.GetBytes($"{adapter.Id}|{ipv4}|{ipv6}|{string.Join(',', addresses.Select(a => a.ToString()))}")));
+                foreach (var address in addresses)
+                {
+                    var index = address.AddressFamily == AddressFamily.InterNetwork ? ipv4 : ipv6;
+                    if (index is > 0 && !IPAddress.IsLoopback(address))
+                        paths.Add(new(adapter.Id, adapter.Name, address, index.Value, generation));
+                }
             }
+            catch (NetworkInformationException) { /* Windows removed or reconfigured this adapter during discovery. */ }
         }
         return paths.AsReadOnly();
+    }
+
+    private static int? ReadIndex(NetworkInterface adapter, IPInterfaceProperties properties, NetworkInterfaceComponent component)
+    {
+        try
+        {
+            if (!adapter.Supports(component)) return null;
+            return component == NetworkInterfaceComponent.IPv4
+                ? properties.GetIPv4Properties()?.Index : properties.GetIPv6Properties()?.Index;
+        }
+        catch (NetworkInformationException) { return null; }
     }
 }

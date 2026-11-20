@@ -35,14 +35,9 @@ public partial class NewDownloadView : UserControl
 
     private async void SubmitClick(object sender, RoutedEventArgs e)
     {
-        if (DataContext is not MainViewModel model || model.AddCommand.IsRunning) return;
-        SubmitButton.IsEnabled = false;
-        try
-        {
-            await model.AddCommand.ExecuteAsync(null);
-            if (model.DownloadAdded && Window.GetWindow(this) is { IsVisible: true } dialog)
-                dialog.DialogResult = true;
-        }
-        finally { SubmitButton.IsEnabled = true; }
+        if (DataContext is not MainViewModel model || !model.AddCommand.CanExecute(null)) return;
+        await model.AddCommand.ExecuteAsync(null);
+        if (model.DownloadAdded && Window.GetWindow(this) is { IsVisible: true } dialog)
+            dialog.DialogResult = true;
     }
 }

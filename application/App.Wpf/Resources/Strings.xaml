@@ -47,6 +47,10 @@
     <sys:String x:Key="CloseLabel">Close window</sys:String>
     <sys:String x:Key="Subtitle">Download with your selected connections</sys:String>
     <sys:String x:Key="UrlLabel">Download URL</sys:String>
+    <sys:String x:Key="PasteLinkLabel">Paste link</sys:String>
+    <sys:String x:Key="StartDownloadLabel">Start download</sys:String>
+    <sys:String x:Key="StartingDownloadLabel">Starting download…</sys:String>
+    <sys:String x:Key="StopDownloadLabel">Stop download (can resume)</sys:String>
     <sys:String x:Key="DestinationLabel">Destination file</sys:String>
     <sys:String x:Key="BrowseLabel">Browse…</sys:String>
     <sys:String x:Key="ConnectionsLabel">Connections</sys:String>

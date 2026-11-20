@@ -107,7 +107,7 @@ func TestRecoverInterruptedRouteInstallation(t *testing.T) {
 					} else {
 						table.addAt = offset
 					}
-					if err := installCaptureRoutes(j, table, 1234); !errors.Is(err, injectedFailure) {
+					if err := installCaptureRoutes(j, table, 1234, true, true); !errors.Is(err, injectedFailure) {
 						t.Fatalf("install error = %v", err)
 					}
 					j.saveAt = 0
@@ -125,7 +125,7 @@ func TestRetryInterruptedRouteRecovery(t *testing.T) {
 				name := fmt.Sprintf("%s/%d/after=%t", operation, offset, after)
 				t.Run(name, func(t *testing.T) {
 					j, table := newRouteFixture()
-					if err := installCaptureRoutes(j, table, 1234); err != nil {
+					if err := installCaptureRoutes(j, table, 1234, true, true); err != nil {
 						t.Fatal(err)
 					}
 					j.after, table.after = after, after
@@ -158,7 +158,7 @@ func verifyRecovered(t *testing.T, j *fakeJournal, table *fakeRouteTable) {
 
 func TestRecoveryRetainsConflictAndLeavesForeignRoutes(t *testing.T) {
 	j, table := newRouteFixture()
-	if err := installCaptureRoutes(j, table, 1234); err != nil {
+	if err := installCaptureRoutes(j, table, 1234, true, true); err != nil {
 		t.Fatal(err)
 	}
 	foreign := capturePrefixes[1]
@@ -170,14 +170,45 @@ func TestRecoveryRetainsConflictAndLeavesForeignRoutes(t *testing.T) {
 		len(j.record.Routes) != 1 || j.record.Routes[0].Prefix != foreign {
 		t.Fatalf("journal: %v, routes: %v", j.record.Routes, table.routes)
 	}
-	if err := installCaptureRoutes(j, table, 2345); err == nil {
+	if err := installCaptureRoutes(j, table, 2345, true, true); err == nil {
 		t.Fatal("started with unresolved ownership")
+	}
+}
+
+func TestInstallCaptureRoutesOnlyForSelectedFamilies(t *testing.T) {
+	for _, scenario := range []struct {
+		name       string
+		ipv4, ipv6 bool
+		count      int
+	}{
+		{"IPv4 only", true, false, 2},
+		{"IPv6 only", false, true, 2},
+		{"dual stack", true, true, 4},
+		{"neither", false, false, 0},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			journal, table := newRouteFixture()
+			err := installCaptureRoutes(journal, table, 1234, scenario.ipv4, scenario.ipv6)
+			if (err != nil) != (scenario.count == 0) {
+				t.Fatalf("unexpected install result: %v", err)
+			}
+			if table.adds != scenario.count || len(journal.record.Routes) != scenario.count {
+				t.Fatalf("added %d routes and recorded %d, want %d", table.adds, len(journal.record.Routes), scenario.count)
+			}
+			for _, prefix := range capturePrefixes {
+				_, installed := table.routes[prefix]
+				if want := (prefix.Addr().Is4() && scenario.ipv4) || (prefix.Addr().Is6() && scenario.ipv6); installed != want {
+					t.Errorf("route %v present = %v, want %v", prefix, installed, want)
+				}
+			}
+			verifyRecovered(t, journal, table)
+		})
 	}
 }
 
 func TestRecoveryRefusesInvalidIdentityAndRetainsUninspectableRoutes(t *testing.T) {
 	j, table := newRouteFixture()
-	if err := installCaptureRoutes(j, table, 1234); err != nil {
+	if err := installCaptureRoutes(j, table, 1234, true, true); err != nil {
 		t.Fatal(err)
 	}
 	j.record.Adapter = "another adapter"
@@ -195,7 +226,7 @@ func TestRecoveryRefusesInvalidIdentityAndRetainsUninspectableRoutes(t *testing.
 func TestInstallationDoesNotAdoptPreexistingRoute(t *testing.T) {
 	j, table := newRouteFixture()
 	table.routes[capturePrefixes[0]] = 1234
-	if err := installCaptureRoutes(j, table, 1234); err == nil ||
+	if err := installCaptureRoutes(j, table, 1234, true, true); err == nil ||
 		j.saves != 0 || table.adds != 0 || len(table.routes) != 1 {
 		t.Fatalf("preexisting route: err = %v, journal = %v, routes = %v", err, j.record.Routes, table.routes)
 	}
@@ -204,7 +235,7 @@ func TestInstallationDoesNotAdoptPreexistingRoute(t *testing.T) {
 func TestInstallationDoesNotAdoptRouteFromKnownAddCollision(t *testing.T) {
 	j, table := newRouteFixture()
 	table.collisionAt = 2
-	if err := installCaptureRoutes(j, table, 1234); !errors.Is(err, errRouteAlreadyExists) {
+	if err := installCaptureRoutes(j, table, 1234, true, true); !errors.Is(err, errRouteAlreadyExists) {
 		t.Fatalf("install error = %v", err)
 	}
 	if err := reconcileCaptureRoutes(j, table); err != nil {
