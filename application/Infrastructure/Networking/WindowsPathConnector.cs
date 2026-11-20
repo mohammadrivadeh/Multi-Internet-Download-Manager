@@ -35,9 +35,9 @@ internal sealed class WindowsPathConnector(NetworkPath path, INetworkPathCatalog
             throw new PlatformNotSupportedException("Explicit interface binding requires Windows.");
         EnsureCurrent();
         var family = path.SourceAddress.AddressFamily;
-        var route = $"interface={path.InterfaceIndex} family={family}";
-        if (context.InitialRequestMessage.Options.TryGetValue(DownloadPathTrace.RequestContext, out var detail))
-            route = $"{detail} {route}";
+        var route = context.InitialRequestMessage.Options.TryGetValue(DownloadPathTrace.RequestContext, out var detail)
+            ? $"{detail} family={family}"
+            : $"interface={path.InterfaceIndex} family={family}";
         LocalDiagnostics.Trace("dns-start", route);
         IPAddress[] addresses;
         try { addresses = await Dns.GetHostAddressesAsync(context.DnsEndPoint.Host, family, cancellationToken); }
