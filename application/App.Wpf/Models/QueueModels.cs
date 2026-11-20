@@ -24,8 +24,10 @@ public sealed class QueueRow : ObservableObject
 {
     private QueueJob job;
     private string liveSpeed = "—";
+    private readonly TransferRateEstimator estimator = new();
+    private long? liveAcceptedBytes;
     private IReadOnlyList<DownloadPathProgress> networkPaths = [];
-    public string LiveSpeed { get => liveSpeed; internal set => SetProperty(ref liveSpeed, value); }
+    public string LiveSpeed { get => liveSpeed; private set => SetProperty(ref liveSpeed, value); }
     private readonly IDesktopServices Desktop;
     public QueueJob Job => job;
     public QueueRow(QueueJob job, IDesktopServices desktop) { this.job = job; Desktop = desktop; }
@@ -33,7 +35,12 @@ public sealed class QueueRow : ObservableObject
     {
         if (job == value) return;
         job = value;
-        if (job.State != QueueJobState.Running) LiveSpeed = "—";
+        if (job.State != QueueJobState.Running)
+        {
+            estimator.Reset();
+            liveAcceptedBytes = null;
+            LiveSpeed = "—";
+        }
         OnPropertyChanged(string.Empty);
     }
     public void UpdateFromSnapshot(QueueJob value)
@@ -54,8 +61,9 @@ public sealed class QueueRow : ObservableObject
     public string DailyWindow => Job.DailyWindow is { } w ? $"{w.StartMinute / 60:00}:{w.StartMinute % 60:00}–{w.EndMinute / 60:00}:{w.EndMinute % 60:00} ({TimeSpan.FromMinutes(w.OffsetMinutes)})" : "—";
     public string Schedule => Job.NotBefore?.ToString("yyyy-MM-dd HH:mm zzz") ?? "";
     public string Progress => Job.TotalBytes is { } total ? $"{Job.CompletedBytes:N0} / {total:N0}" : $"{Job.CompletedBytes:N0}";
-    public string ProgressDisplay => Job.TotalBytes is { } total ? $"{FormatBytes(Job.CompletedBytes)} / {FormatBytes(total)}" : FormatBytes(Job.CompletedBytes);
-    public double ProgressPercent => Job.TotalBytes is long total && total > 0 ? Math.Clamp((double)Job.CompletedBytes / total * 100d, 0d, 100d) : 0d;
+    private long DisplayBytes => liveAcceptedBytes ?? Job.CompletedBytes;
+    public string ProgressDisplay => Job.TotalBytes is { } total ? $"{FormatBytes(DisplayBytes)} / {FormatBytes(total)}" : FormatBytes(DisplayBytes);
+    public double ProgressPercent => Job.TotalBytes is long total && total > 0 ? Math.Clamp((double)DisplayBytes / total * 100d, 0d, 100d) : 0d;
     public string SizeDisplay => Job.TotalBytes is { } total ? FormatBytes(total) : "—";
     public string NetworkPathLabel => Desktop.Text("DownloadPathSection");
     public string NetworkPathSummary => networkPaths.Count == 0 ? Desktop.Text("DownloadPathNoSample")
@@ -69,6 +77,36 @@ public sealed class QueueRow : ObservableObject
         if (networkPaths.SequenceEqual(paths)) return;
         networkPaths = paths;
         OnPropertyChanged(nameof(NetworkPathSummary));
+    }
+
+    internal TimeSpan? ApplyLiveProgress(DownloadProgress progress, TimeSpan elapsed)
+    {
+        var previous = liveAcceptedBytes;
+        var updated = progress.Stage == DownloadStage.Probing
+            ? Job with { State = QueueJobState.Running }
+            : Job with { State = QueueJobState.Running, CompletedBytes = progress.CompletedBytes, TotalBytes = progress.TotalBytes };
+        liveAcceptedBytes = progress.Stage == DownloadStage.Probing ? null : progress.AcceptedBytes;
+        if (updated != Job) Update(updated);
+        else if (previous != liveAcceptedBytes)
+        {
+            OnPropertyChanged(nameof(ProgressDisplay));
+            OnPropertyChanged(nameof(ProgressPercent));
+        }
+
+        if (progress.Stage != DownloadStage.Downloading)
+        {
+            estimator.Reset();
+            LiveSpeed = "—";
+            return null;
+        }
+        var (rate, remaining) = estimator.Sample(progress.AcceptedBytes, progress.TotalBytes, elapsed);
+        LiveSpeed = rate > 0 ? $"{rate / 1000:N1} KB/s" : "—";
+        return remaining;
+    }
+
+    internal void ClearStaleSpeed(TimeSpan elapsed)
+    {
+        if (estimator.ResetIfStale(elapsed)) LiveSpeed = "—";
     }
     private static string FormatBytes(long bytes)
     {

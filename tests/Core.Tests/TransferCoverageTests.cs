@@ -44,4 +44,23 @@ public class TransferCoverageTests
         Assert.Equal(1000, next.BytesPerSecond); Assert.Equal(TimeSpan.FromSeconds(8.9), next.Remaining);
         Assert.Null(rate.Sample(1150, null, TimeSpan.FromSeconds(1.15)).Remaining);
     }
+
+    [Fact]
+    public void StalledTransferResetsIndependentlyAndResumesWithAFreshBaseline()
+    {
+        var stalled = new TransferRateEstimator();
+        var active = new TransferRateEstimator();
+        stalled.Sample(0, 10000, TimeSpan.Zero);
+        active.Sample(0, 10000, TimeSpan.Zero);
+        Assert.Equal(1000, stalled.Sample(1000, 10000, TimeSpan.FromSeconds(1)).BytesPerSecond);
+        active.Sample(4000, 10000, TimeSpan.FromSeconds(4));
+
+        var now = TimeSpan.FromSeconds(6);
+        Assert.True(stalled.ResetIfStale(now));
+        Assert.False(active.ResetIfStale(now));
+        Assert.Equal(1000, active.Sample(6000, 10000, now).BytesPerSecond);
+        Assert.Equal(0, stalled.Sample(2500, 10000, now).BytesPerSecond);
+        Assert.Equal(500, stalled.Sample(3000, 10000, TimeSpan.FromSeconds(7)).BytesPerSecond);
+        Assert.Equal(0, active.Sample(8000, 10000, TimeSpan.FromSeconds(11)).BytesPerSecond);
+    }
 }

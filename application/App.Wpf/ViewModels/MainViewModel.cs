@@ -27,8 +27,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private QueueJob? editingJob;
     private PlannedDestination? plannedDestination;
     private bool preferencesWritable;
-    private TimeSpan lastTelemetryAt;
-    private readonly Dictionary<Guid, TransferRateEstimator> jobEstimators = [];
+    private QueueRow? lastTelemetryRow;
     private readonly Stopwatch telemetryClock = Stopwatch.StartNew();
     private readonly NetworkPathCatalog catalog = new();
     private readonly IDesktopTimer timer;
@@ -154,24 +153,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void UpdateProgress(Guid id, DownloadProgress value)
     {
-        lastTelemetryAt = telemetryClock.Elapsed;
-        if (!jobEstimators.TryGetValue(id, out var jobEstimator)) jobEstimators[id] = jobEstimator = new();
-        var sample = jobEstimator.Sample(value.AcceptedBytes, value.TotalBytes, telemetryClock.Elapsed);
-        SpeedText = value.Stage == DownloadStage.Downloading && sample.BytesPerSecond > 0 ? $"{sample.BytesPerSecond / 1000:N1} KB/s" : "—";
-        RemainingText = value.Stage == DownloadStage.Downloading && sample.Remaining is { } remaining ? remaining.ToString(@"d\.hh\:mm\:ss") : "—";
         var existing = Jobs.FirstOrDefault(row => row.Job.Id == id);
         if (existing is not null && existing.Job.State is QueueJobState.Queued or QueueJobState.Running)
         {
             var becameRunning = existing.Job.State != QueueJobState.Running;
-            existing.Update(existing.Job with { State = QueueJobState.Running, CompletedBytes = value.CompletedBytes, TotalBytes = value.TotalBytes });
-            existing.LiveSpeed = SpeedText;
+            var remaining = existing.ApplyLiveProgress(value, telemetryClock.Elapsed);
+            lastTelemetryRow = existing;
+            SpeedText = existing.LiveSpeed;
+            RemainingText = remaining?.ToString(@"d\.hh\:mm\:ss") ?? "—";
             existing.UpdateNetworkPaths(value.Paths);
             if (becameRunning) OnPropertyChanged(nameof(QueueStatuses));
             RefreshActionAvailability();
         }
         IsIndeterminate = value.TotalBytes is null;
         Percentage = value.TotalBytes is > 0 ? (double)value.AcceptedBytes / value.TotalBytes.Value * 100 : value.Stage == DownloadStage.Completed ? 100 : 0;
-        if (value.Stage != DownloadStage.Downloading) jobEstimators.Remove(id);
         Status = string.Format(System.Globalization.CultureInfo.CurrentCulture, Text("ProgressFormat"), Text($"Stage{value.Stage}"), value.CompletedBytes, value.TotalBytes?.ToString("N0") ?? Text("UnknownTotal"));
     }
 
@@ -212,15 +207,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private sealed class UiProgress(IDesktopServices desktop, Action<Guid, DownloadProgress> update)
     {
-        private readonly Stopwatch watch = Stopwatch.StartNew();
         private readonly object sync = new();
-        private (Guid, DownloadStage)? previous;
+        private readonly Dictionary<Guid, (DownloadStage Stage, long Timestamp)> previous = [];
         public void Report(Guid id, DownloadProgress value)
         {
             lock (sync)
             {
-                if (previous == (id, value.Stage) && watch.ElapsedMilliseconds < 100) return;
-                previous = (id, value.Stage); watch.Restart();
+                var now = Stopwatch.GetTimestamp();
+                if (previous.TryGetValue(id, out var last) && last.Stage == value.Stage &&
+                    Stopwatch.GetElapsedTime(last.Timestamp, now) < TimeSpan.FromMilliseconds(100)) return;
+                if (value.Stage == DownloadStage.Completed) previous.Remove(id);
+                else previous[id] = (value.Stage, now);
                 desktop.Post(() => update(id, value));
             }
         }

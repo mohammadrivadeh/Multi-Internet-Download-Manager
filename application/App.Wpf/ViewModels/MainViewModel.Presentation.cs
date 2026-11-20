@@ -34,7 +34,13 @@ public partial class MainViewModel
     partial void OnIsReadyChanged(bool value) => RefreshActionAvailability();
     private void RefreshStallDisplay()
     {
-        if (telemetryClock.Elapsed - lastTelemetryAt >= TimeSpan.FromSeconds(5))
-        { SpeedText = "—"; RemainingText = "—"; jobEstimators.Clear(); }
+        var elapsed = telemetryClock.Elapsed;
+        foreach (var row in Jobs.Where(row => row.Job.State == QueueJobState.Running))
+            row.ClearStaleSpeed(elapsed);
+        if (lastTelemetryRow?.LiveSpeed is null or "—")
+        {
+            SpeedText = "—";
+            RemainingText = "—";
+        }
     }
 }

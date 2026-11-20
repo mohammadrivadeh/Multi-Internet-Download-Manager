@@ -48,16 +48,32 @@ public sealed class TransferRateEstimator
 {
     private long baseline;
     private TimeSpan last;
+    private TimeSpan lastSample;
     private bool initialized;
     private double previousRate;
     public (double BytesPerSecond, TimeSpan? Remaining) Sample(long accepted, long? total, TimeSpan elapsed)
     {
+        ResetIfStale(elapsed);
+        lastSample = elapsed;
         if (!initialized || accepted < baseline || elapsed <= last)
         { initialized = true; baseline = accepted; last = elapsed; previousRate = 0; return (0, null); }
         if ((elapsed - last).TotalSeconds < 0.25) return (previousRate, Estimate(accepted, total, previousRate));
         var rate = (accepted - baseline) / (elapsed - last).TotalSeconds;
         baseline = accepted; last = elapsed; previousRate = rate;
         return (rate, Estimate(accepted, total, rate));
+    }
+
+    public bool ResetIfStale(TimeSpan elapsed)
+    {
+        if (!initialized || elapsed - lastSample < TimeSpan.FromSeconds(5)) return false;
+        Reset();
+        return true;
+    }
+
+    public void Reset()
+    {
+        initialized = false;
+        previousRate = 0;
     }
     private static TimeSpan? Estimate(long accepted, long? total, double rate)
     {
