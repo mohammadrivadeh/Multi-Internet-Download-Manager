@@ -21,5 +21,8 @@
 | Overlapping private tethering subnets | Unrun | |
 | Trusted HTTPS and rejected invalid certificate | Unrun | |
 | Unreachable destination / no family match | Unrun | |
+| One baseline per adapter and combined transfer | Unrun | Equal worker count, fixture SHA-256, median goodput and checkpointed bytes per interface |
+| Simultaneous traffic on selected interfaces | Unrun | Overlapping time windows in packet captures or controlled-server logs |
+| Combined transfer with one adapter disconnected | Unrun | First payload on both interfaces, path retirement, final SHA-256 and surviving-path contribution |
 
 Attach sanitized probe JSON, fixture-info hashes, server observations and packet capture summary. Do not include cookies, auth headers, signed URLs or credentials. Identify limitations independently of failures. This record cannot certify WPF, installation or aggregate throughput.

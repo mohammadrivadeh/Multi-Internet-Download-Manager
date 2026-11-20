@@ -1,10 +1,14 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using DownloadManager.Core;
 using DownloadManager.Infrastructure.Diagnostics;
 using DownloadManager.Infrastructure.Queueing;
 
+var json = args is ["--json", ..];
+if (json) args = args[1..];
 var useSystemRoute = args.Length == 4 && args[0] == "system";
 var useBoundPaths = args.Length >= 6 && args.Length % 2 == 0 && args[0] == "paths";
 if ((!useSystemRoute && !useBoundPaths) ||
@@ -12,8 +16,8 @@ if ((!useSystemRoute && !useBoundPaths) ||
     workers is < 1 or > 128 || (!useSystemRoute && (args.Length - 4) / 2 > workers))
 {
     Console.Error.WriteLine("Usage:");
-    Console.Error.WriteLine("  DownloadHarness system <http(s)-url> <destination> <workers:1..128>");
-    Console.Error.WriteLine("  DownloadHarness paths <http(s)-url> <destination> <workers:1..128> <adapter-id> <source-address> [<adapter-id> <source-address> ...]");
+    Console.Error.WriteLine("  DownloadHarness [--json] system <http(s)-url> <destination> <workers:1..128>");
+    Console.Error.WriteLine("  DownloadHarness [--json] paths <http(s)-url> <destination> <workers:1..128> <adapter-id> <source-address> [<adapter-id> <source-address> ...]");
     Console.Error.WriteLine("Use NetworkProbe list to find adapter IDs and source addresses.");
     return 2;
 }
@@ -38,17 +42,33 @@ try
         CreatedAt = DateTimeOffset.UtcNow
     };
     var stopwatch = Stopwatch.StartNew();
-    var progress = new StageReporter();
-    Console.WriteLine($"Job {job.Id:N} with {job.Paths.Count} explicitly selected paths.");
+    var progress = new StageReporter(!json);
+    if (!json) Console.WriteLine($"Job {job.Id:N} with {job.Paths.Count} explicitly selected paths.");
     await new QueuedDownloadExecutor().ExecuteAsync(job, progress, stop.Token);
     stopwatch.Stop();
 
     await using var file = File.OpenRead(job.Destination);
-    var hash = Convert.ToHexString(await SHA256.HashDataAsync(file));
-    Console.WriteLine("Completed and finalized.");
-    Console.WriteLine(FormattableString.Invariant($"Size: {file.Length} bytes, elapsed: {stopwatch.Elapsed.TotalSeconds:F2}s"));
-    Console.WriteLine($"SHA-256: {hash}");
-    Console.WriteLine($"Diagnostics: {LocalDiagnostics.FilePath}");
+    var hash = Convert.ToHexString(await SHA256.HashDataAsync(file, stop.Token));
+    if (json)
+    {
+        var format = new JsonSerializerOptions { Converters = { new JsonStringEnumConverter<DownloadPathState>() } };
+        Console.WriteLine(JsonSerializer.Serialize(new
+        {
+            JobId = job.Id.ToString("N"),
+            Bytes = file.Length,
+            ElapsedSeconds = stopwatch.Elapsed.TotalSeconds,
+            Sha256 = hash,
+            Paths = progress.Paths,
+            Diagnostics = LocalDiagnostics.FilePath
+        }, format));
+    }
+    else
+    {
+        Console.WriteLine("Completed and finalized.");
+        Console.WriteLine(FormattableString.Invariant($"Size: {file.Length} bytes, elapsed: {stopwatch.Elapsed.TotalSeconds:F2}s"));
+        Console.WriteLine($"SHA-256: {hash}");
+        Console.WriteLine($"Diagnostics: {LocalDiagnostics.FilePath}");
+    }
     return 0;
 }
 catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -62,15 +82,17 @@ finally
     Console.CancelKeyPress -= cancel;
 }
 
-sealed class StageReporter : IProgress<DownloadProgress>
+sealed class StageReporter(bool displayStages) : IProgress<DownloadProgress>
 {
     private DownloadStage? lastStage;
+    public IReadOnlyList<DownloadPathProgress> Paths { get; private set; } = [];
 
     public void Report(DownloadProgress progress)
     {
+        if (progress.Stage == DownloadStage.Completed) Paths = progress.Paths;
         if (lastStage == progress.Stage)
             return;
         lastStage = progress.Stage;
-        Console.WriteLine($"{progress.Stage}: {progress.CompletedBytes} durable bytes, resumed={progress.Resumed}");
+        if (displayStages) Console.WriteLine($"{progress.Stage}: {progress.CompletedBytes} durable bytes, resumed={progress.Resumed}");
     }
 }

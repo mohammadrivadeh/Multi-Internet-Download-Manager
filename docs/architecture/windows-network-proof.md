@@ -59,7 +59,7 @@ Use a controlled origin reachable over both selected Internet connections. Start
 dotnet run --project tests/TestServer -c Debug -- --urls http://0.0.0.0:5099 --fixture-bytes 67108864
 ```
 
-From the Windows client, list the adapter IDs and source addresses with `NetworkProbe list`. Keep the same origin and total worker count for each trial. Use fresh destination names and repeat the three trials to compare median times.
+From the Windows client, list the adapter IDs and source addresses with `NetworkProbe list`. Run the comparison script with the same origin and total worker count in every trial. It rotates trial order, uses fresh temporary files, checks the expected SHA-256 and verifies that the combined runs checkpoint ranges on all baseline interfaces. Each path must remain available for the comparison to count. The JSON output includes per-interface counters, median elapsed times and the combined speed relative to the fastest single adapter.
 
 ```powershell
 $origin = 'http://CONTROLLED-SERVER:5099'
@@ -68,10 +68,16 @@ $adapterA = 'FIRST-ADAPTER-ID'
 $addressA = 'FIRST-SOURCE-ADDRESS'
 $adapterB = 'SECOND-ADAPTER-ID'
 $addressB = 'SECOND-SOURCE-ADDRESS'
-(Invoke-RestMethod "$origin/fixture-info").fullSha256
-dotnet run --project tests/DownloadHarness -c Debug -- paths $source ./only-a.bin 8 $adapterA $addressA
-dotnet run --project tests/DownloadHarness -c Debug -- paths $source ./only-b.bin 8 $adapterB $addressB
-dotnet run --project tests/DownloadHarness -c Debug -- paths $source ./both.bin 8 $adapterA $addressA $adapterB $addressB
+$hash = (Invoke-RestMethod "$origin/fixture-info").fullSha256
+dotnet build tests/DownloadHarness -c Debug
+& ./tests/DownloadHarness/compare-paths.ps1 -Source $source -ExpectedSha256 $hash `
+    -AdapterId $adapterA,$adapterB -SourceAddress $addressA,$addressB -Workers 8 -Rounds 3
 ```
 
-Compare each reported SHA-256 to the fixture hash. Match the printed job ID with per-interface byte counts and failover events in the diagnostics log. Confirm concurrent traffic on the two selected interfaces using packet capture or server timing, and record whether the combined download beat the faster single path. Repeat the combined trial while disconnecting one test adapter after both have carried payload. Verify the surviving path finishes the download and that the final hash still matches. A loopback transfer verifies HTTP and file handling. Actual adapter routing and speed measurements require the physical interfaces.
+Match each trial's job ID with per-interface byte counts and failover events in the diagnostics log. Use packet capture or server timing to confirm concurrent traffic on the two selected interfaces. The script reports a speedup below 1 when the combined path is slower, so it can also record a negative result. Actual adapter routing and speed measurements require the physical interfaces.
+
+Run the disconnect trial separately. Use a fresh destination and disconnect one test adapter after both have carried payload. Verify the surviving path finishes the download and that its reported SHA-256 matches the fixture hash.
+
+```powershell
+dotnet run --project tests/DownloadHarness -c Debug --no-build -- paths $source ./both-disconnect.bin 8 $adapterA $addressA $adapterB $addressB
+```
