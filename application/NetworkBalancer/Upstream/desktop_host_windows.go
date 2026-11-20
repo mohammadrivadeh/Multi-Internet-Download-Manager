@@ -1,18 +1,14 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"net"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"golang.org/x/sys/windows"
@@ -155,13 +151,15 @@ func runCapture(pipe io.ReadWriter, selections []string) error {
 			scheduler.Tick(now.Sub(last))
 			last = now
 		case <-pollAdapters.C:
-			if !inventoryMatches(adapters, selected) {
+			current, discoveryError := selectedAdapters(selected)
+			if discoveryError != nil || len(current) == 0 || checkStrongHost(current) != nil {
 				capture.Close()
 				if cleanup := waitAdapterRemoval(); cleanup != nil {
 					return fmt.Errorf("adapter configuration changed; %w", cleanup)
 				}
-				return fmt.Errorf("adapter configuration changed; capture was stopped")
+				return fmt.Errorf("no safe selected adapter remains or Windows could not verify it; capture was stopped")
 			}
+			scheduler.Update(current)
 		}
 	}
 }
@@ -218,13 +216,10 @@ func parseSelections(selections []string) (map[int]string, error) {
 }
 
 func eligibleAdapters(selected map[int]string) ([]nics.Nic, error) {
-	adapters, err := nics.DiscoverNics(nil, nil)
+	adapters, err := selectedAdapters(selected)
 	if err != nil {
 		return nil, err
 	}
-	adapters = slices.DeleteFunc(adapters, func(adapter nics.Nic) bool {
-		return strings.EqualFold(adapter.Name, adapterName) || selected[adapter.Index] != adapter.Name
-	})
 	if len(adapters) != len(selected) {
 		return nil, fmt.Errorf("a selected adapter is no longer eligible; scan again")
 	}
@@ -234,51 +229,34 @@ func eligibleAdapters(selected map[int]string) ([]nics.Nic, error) {
 	return adapters, nil
 }
 
-func inventoryMatches(original []nics.Nic, selected map[int]string) bool {
-	current, err := eligibleAdapters(selected)
-	if err != nil || len(current) != len(original) {
-		return false
+func selectedAdapters(selected map[int]string) ([]nics.Nic, error) {
+	adapters, err := nics.DiscoverNics(nil, nil)
+	if err != nil {
+		return nil, err
 	}
-	for _, adapter := range original {
-		if !slices.ContainsFunc(current, func(found nics.Nic) bool {
-			return found.Index == adapter.Index && found.Name == adapter.Name &&
-				found.IP.Equal(adapter.IP) && found.IP6.Equal(adapter.IP6)
-		}) {
-			return false
-		}
-	}
-	return true
+	adapters = slices.DeleteFunc(adapters, func(adapter nics.Nic) bool {
+		return strings.EqualFold(adapter.Name, adapterName) || selected[adapter.Index] != adapter.Name
+	})
+	return adapters, nil
 }
 
 func checkStrongHost(adapters []nics.Nic) error {
-	system, err := windows.GetSystemDirectory()
-	if err != nil {
-		return err
-	}
-	indexes := make([]string, 0, len(adapters))
-	expected := make([]string, 0, 2*len(adapters))
 	for _, adapter := range adapters {
-		indexes = append(indexes, strconv.Itoa(adapter.Index))
-		if adapter.IP != nil {
-			expected = append(expected, fmt.Sprintf("'%d:IPv4'", adapter.Index))
+		for _, family := range []struct {
+			address net.IP
+			number  uint16
+		}{{adapter.IP, windows.AF_INET}, {adapter.IP6, windows.AF_INET6}} {
+			if family.address == nil {
+				continue
+			}
+			row := windows.MibIpInterfaceRow{Family: family.number, InterfaceIndex: uint32(adapter.Index)}
+			if err := windows.GetIpInterfaceEntry(&row); err != nil {
+				return fmt.Errorf("verify egress for adapter %q: %w", adapter.Name, err)
+			}
+			if row.WeakHostSend != 0 || row.ForwardingEnabled != 0 {
+				return fmt.Errorf("adapter %q has weak-host send or forwarding enabled", adapter.Name)
+			}
 		}
-		if adapter.IP6 != nil {
-			expected = append(expected, fmt.Sprintf("'%d:IPv6'", adapter.Index))
-		}
-	}
-	command := "$rows = @(Get-NetIPInterface -InterfaceIndex " + strings.Join(indexes, ",") +
-		" -ErrorAction Stop); " +
-		"if (@($rows | Where-Object { $_.WeakHostSend -ne 'Disabled' -or $_.Forwarding -ne 'Disabled' }).Count) { exit 1 }; " +
-		"$present = @($rows | ForEach-Object { '{0}:{1}' -f $_.InterfaceIndex, $_.AddressFamily }); " +
-		"foreach ($pair in @(" + strings.Join(expected, ",") + ")) { if ($pair -notin $present) { exit 1 } }"
-	program := filepath.Join(system, "WindowsPowerShell", "v1.0", "powershell.exe")
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	defer cancel()
-	process := exec.CommandContext(ctx, program, "-NoProfile", "-NonInteractive", "-Command", command)
-	process.Env = append(os.Environ(), "PSModulePath="+filepath.Join(system, "WindowsPowerShell", "v1.0", "Modules"))
-	process.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	if err := process.Run(); err != nil {
-		return fmt.Errorf("could not verify strong-host egress; disable sharing or forwarding on eligible adapters before capture")
 	}
 	return nil
 }

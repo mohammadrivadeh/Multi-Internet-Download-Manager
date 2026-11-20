@@ -164,6 +164,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             var becameRunning = existing.Job.State != QueueJobState.Running;
             existing.Update(existing.Job with { State = QueueJobState.Running, CompletedBytes = value.CompletedBytes, TotalBytes = value.TotalBytes });
+            existing.LiveSpeed = SpeedText;
             if (becameRunning) OnPropertyChanged(nameof(QueueStatuses));
             RefreshActionAvailability();
         }

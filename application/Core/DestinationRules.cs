@@ -16,7 +16,7 @@ public static class DestinationRules
         return value;
     }
 
-    public static PlannedDestination Plan(string root, string category, Uri source)
+    public static PlannedDestination Plan(string root, string category, Uri source, string? filename = null)
     {
         ArgumentNullException.ThrowIfNull(source);
         if (!Path.IsPathFullyQualified(root) || !source.IsAbsoluteUri || source.Scheme is not ("http" or "https") || source.UserInfo.Length != 0)
@@ -24,7 +24,7 @@ public static class DestinationRules
         root = Path.GetFullPath(root);
         var folder = ValidateLeaf(DownloadCategory.Normalize(category));
         var last = source.AbsolutePath.Split('/').Last();
-        var filename = last.Length == 0 ? "download.bin" : ValidateLeaf(Uri.UnescapeDataString(last));
+        filename = ValidateLeaf(filename ?? (last.Length == 0 ? "download.bin" : Uri.UnescapeDataString(last)));
         var directory = Path.GetFullPath(Path.Combine(root, folder));
         var target = Path.GetFullPath(Path.Combine(directory, filename));
         return new(root, directory, target);

@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DownloadManager.Core;
 using DownloadManager.Infrastructure.Networking;
+using DownloadManager.Infrastructure.Http;
 using DownloadManager.Infrastructure.Persistence;
 using DownloadManager.Infrastructure.Queueing;
 
@@ -52,7 +53,24 @@ public partial class MainViewModel
     [RelayCommand]
     private void Browse()
     {
-        if (desktop.ChooseDestination() is { } chosen) Destination = chosen;
+        if (desktop.ChooseFolder() is { } chosen) Destination = chosen;
+    }
+
+    internal async Task PreviewFilenameAsync()
+    {
+        var url = Url;
+        var destination = Destination;
+        var category = Category;
+        if (destination != automaticDestination || !Uri.TryCreate(url.Trim(), UriKind.Absolute, out var source) ||
+            source.Scheme is not ("http" or "https") || source.UserInfo.Length != 0) return;
+        var filename = await DownloadFilename.TryResolveAsync(source);
+        if (filename is null || Url != url || Destination != destination || Category != category || AddCommand.IsRunning) return;
+        try
+        {
+            plannedDestination = DestinationRules.Plan(DestinationRoot, category, source, filename);
+            Destination = automaticDestination = plannedDestination.FullPath;
+        }
+        catch (ArgumentException) { }
     }
 
     private void UpdateAutomaticDestination(string url)
@@ -89,7 +107,22 @@ public partial class MainViewModel
                 NewDownloadError = "The base download folder is unavailable. Choose another destination.";
                 return;
             }
-            var destination = Directory.Exists(Destination) ? Path.Combine(Destination, GetSuggestedFilename(source)) : Destination;
+            var requestedDestination = Destination;
+            var requestedUrl = Url;
+            var requestedCategory = Category;
+            var plan = plannedDestination;
+            var automatic = string.Equals(requestedDestination, automaticDestination, StringComparison.Ordinal);
+            var isFolder = Directory.Exists(requestedDestination);
+            var filename = automatic || isFolder ? await DownloadFilename.TryResolveAsync(source) : null;
+            if (requestedUrl != Url || requestedDestination != Destination || requestedCategory != Category)
+            {
+                NewDownloadError = "The download fields changed. Review them and start again.";
+                return;
+            }
+            if (automatic && filename is not null)
+                plan = DestinationRules.Plan(DestinationRoot, Category, source, filename);
+            var destination = automatic && plan is not null ? plan.FullPath :
+                isFolder ? Path.Combine(requestedDestination, filename ?? GetSuggestedFilename(source)) : requestedDestination;
             if (File.Exists(destination)) { NewDownloadError = Text("DestinationExistsStatus"); return; }
             var job = new QueueJob
             {
@@ -99,7 +132,6 @@ public partial class MainViewModel
                 QueueName = NewDownloadQueue, Priority = priorityValue, NotBefore = QueueScheduling.ParseStart(ScheduledStart)
             };
             job.Validate();
-            var plan = plannedDestination;
             if (plan is not null && string.Equals(System.IO.Path.GetFullPath(job.Destination), plan.FullPath, StringComparison.OrdinalIgnoreCase))
                 await Task.Run(() => DestinationDirectory.CreateFor(plan));
             await Task.Run(() => queue.EnqueueAsync(job));

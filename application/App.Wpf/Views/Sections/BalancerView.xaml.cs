@@ -18,10 +18,25 @@ public partial class BalancerView : UserControl
     private AdapterRow[]? adapterRows;
     private readonly NetworkPathCatalog catalog = new();
     private CancellationTokenSource? scan;
+    private readonly System.Windows.Threading.DispatcherTimer refreshTimer = new() { Interval = TimeSpan.FromSeconds(2) };
 
     public BalancerView()
     {
         InitializeComponent();
+        refreshTimer.Tick += async (_, _) =>
+        {
+            refreshTimer.Stop();
+            if (!IsLoaded || !IsVisible) return;
+            if (scan is not null) { refreshTimer.Start(); return; }
+            await ScanAsync();
+        };
+        Unloaded += (_, _) =>
+        {
+            NetworkChange.NetworkAddressChanged -= NetworkAddressChanged;
+            refreshTimer.Stop();
+            scan?.Cancel();
+            scanned = false;
+        };
 #if CAPTURE_PREVIEW
         StartCaptureButton.Visibility = Visibility.Visible;
         StopCaptureButton.Visibility = Visibility.Visible;
@@ -29,7 +44,19 @@ public partial class BalancerView : UserControl
 #endif
     }
 
-    private async void OnLoaded(object sender, RoutedEventArgs e) => await ScanOnceAsync();
+    private async void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        NetworkChange.NetworkAddressChanged += NetworkAddressChanged;
+        await ScanOnceAsync();
+    }
+
+    private void NetworkAddressChanged(object? sender, EventArgs e) => Dispatcher.BeginInvoke(() =>
+    {
+        if (!IsLoaded) return;
+        scanned = false;
+        refreshTimer.Stop();
+        refreshTimer.Start();
+    });
 
     private async void OnVisibilityChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
@@ -50,7 +77,8 @@ public partial class BalancerView : UserControl
 
     private async Task ScanAsync()
     {
-        if (scan is not null || capture is not null) return;
+        if (scan is not null) return;
+        scanned = true;
         using var cancellation = new CancellationTokenSource();
         scan = cancellation;
         ScanButton.IsEnabled = false;
@@ -99,8 +127,8 @@ public partial class BalancerView : UserControl
         {
             scan = null;
             ScanButton.IsEnabled = true;
-            AdapterTable.IsEnabled = true;
-            StartCaptureButton.IsEnabled = true;
+            AdapterTable.IsEnabled = capture is null;
+            StartCaptureButton.IsEnabled = capture is null;
         }
     }
 
@@ -155,6 +183,7 @@ public partial class BalancerView : UserControl
             if (session.Ready.IsCompletedSuccessfully && !session.Completion.IsCompleted)
             {
                 StopCaptureButton.IsEnabled = true;
+                ScanButton.IsEnabled = true;
                 CaptureStatus.Text = "Capture host is running.";
             }
             else
@@ -178,6 +207,11 @@ public partial class BalancerView : UserControl
             ScanButton.IsEnabled = true;
             AdapterTable.IsEnabled = true;
             StopCaptureButton.IsEnabled = false;
+            if (IsLoaded && IsVisible)
+            {
+                refreshTimer.Stop();
+                refreshTimer.Start();
+            }
         }
 #else
         await Task.CompletedTask;

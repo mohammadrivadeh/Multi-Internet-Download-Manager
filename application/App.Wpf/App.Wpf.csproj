@@ -9,8 +9,8 @@
     <ProjectReference Include="../NetworkBalancer/NetworkBalancer.csproj" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
   </ItemGroup>
-  <ItemGroup Condition="Exists('../../artifacts/net-merge/windows-amd64/adapter-diagnostics.exe')">
-    <Content Include="../../artifacts/net-merge/windows-amd64/adapter-diagnostics.exe;../../artifacts/net-merge/windows-amd64/LICENSE;../../artifacts/net-merge/windows-amd64/THIRD-PARTY-NOTICES.md"
+  <ItemGroup Condition="Exists('../../artifacts/net-merge/windows-amd64/LICENSE')">
+    <Content Include="../../artifacts/net-merge/windows-amd64/LICENSE;../../artifacts/net-merge/windows-amd64/THIRD-PARTY-NOTICES.md"
              Link="balancer/%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
@@ -25,7 +25,7 @@
              CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <Target Name="ValidateCapturePreviewPackage" BeforeTargets="PrepareForBuild" Condition="'$(EnableCapturePreview)' == 'true'">
-    <Error Condition="!Exists('../../artifacts/net-merge/desktop-capture/desktop-capture.exe') Or !Exists('../../artifacts/net-merge/windows-amd64/adapter-diagnostics.exe')"
+    <Error Condition="!Exists('../../artifacts/net-merge/desktop-capture/desktop-capture.exe') Or !Exists('../../artifacts/net-merge/windows-amd64/LICENSE')"
            Text="Build the Windows engine with -IncludeWintun before enabling the capture preview." />
   </Target>
 </Project>

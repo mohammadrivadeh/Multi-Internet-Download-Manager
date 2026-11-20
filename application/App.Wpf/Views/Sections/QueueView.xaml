@@ -37,7 +37,7 @@
                 <Button Command="{Binding StartSelectedCommand}" ToolTip="Start download" AutomationProperties.Name="Start download"><TextBlock Text="&#xE768;" FontFamily="{DynamicResource App.IconFont}"/></Button>
                 <Button Command="{Binding PauseSelectedCommand}" ToolTip="Pause download" AutomationProperties.Name="Pause download"><TextBlock Text="&#xE769;" FontFamily="{DynamicResource App.IconFont}"/></Button>
                 <Button Command="{Binding ResumeSelectedCommand}" ToolTip="Resume download" AutomationProperties.Name="Resume download"><TextBlock Text="&#xE893;" FontFamily="{DynamicResource App.IconFont}"/></Button>
-                <Button Command="{Binding CancelSelectedCommand}" ToolTip="Stop or cancel download" AutomationProperties.Name="Stop or cancel download"><TextBlock Text="&#xE71A;" FontFamily="{DynamicResource App.IconFont}"/></Button>
+                <Button Command="{Binding PauseSelectedCommand}" ToolTip="Stop download (can resume)" AutomationProperties.Name="Stop download"><TextBlock Text="&#xE71A;" FontFamily="{DynamicResource App.IconFont}"/></Button>
                 <Button Command="{Binding RedownloadSelectedCommand}" ToolTip="Redownload from zero" AutomationProperties.Name="Redownload from zero"><TextBlock Text="&#xE72C;" FontFamily="{DynamicResource App.IconFont}"/></Button>
                 <Button Command="{Binding RetryQueueSaveCommand}" ToolTip="{DynamicResource RetryQueueSaveLabel}" AutomationProperties.Name="{DynamicResource RetryQueueSaveLabel}"><TextBlock Text="&#xE74E;" FontFamily="{DynamicResource App.IconFont}"/></Button>
                 <Button Command="{Binding ClearHistoryCommand}" ToolTip="{DynamicResource ClearHistoryLabel}" AutomationProperties.Name="{DynamicResource ClearHistoryLabel}"><TextBlock Text="&#xE74D;" FontFamily="{DynamicResource App.IconFont}"/></Button>
@@ -63,9 +63,10 @@
                         <MenuItem Header="Resume" Command="{Binding ResumeSelectedCommand}">
                             <MenuItem.Icon><TextBlock Text="&#xE893;" FontFamily="{DynamicResource App.IconFont}"/></MenuItem.Icon>
                         </MenuItem>
-                        <MenuItem Header="Stop / cancel" Command="{Binding CancelSelectedCommand}">
+                        <MenuItem Header="Stop (can resume)" Command="{Binding PauseSelectedCommand}">
                             <MenuItem.Icon><TextBlock Text="&#xE71A;" FontFamily="{DynamicResource App.IconFont}"/></MenuItem.Icon>
                         </MenuItem>
+                        <MenuItem Header="Cancel download" Command="{Binding CancelSelectedCommand}"/>
                         <MenuItem Header="Redownload from zero…" Command="{Binding RedownloadSelectedCommand}">
                             <MenuItem.Icon><TextBlock Text="&#xE72C;" FontFamily="{DynamicResource App.IconFont}"/></MenuItem.Icon>
                         </MenuItem>
@@ -102,6 +103,7 @@
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
                     <DataGridTextColumn Header="{DynamicResource FileColumn}" Binding="{Binding Filename}" Width="2.4*" MinWidth="155" ElementStyle="{StaticResource QueueCellText}"/>
+                    <DataGridTextColumn Header="Speed" Binding="{Binding LiveSpeed, Mode=OneWay}" Width="*" MinWidth="95" ElementStyle="{StaticResource QueueCellText}"/>
                     <DataGridTemplateColumn Header="{DynamicResource ProgressLabel}" Width="2*" MinWidth="150">
                         <DataGridTemplateColumn.CellTemplate><DataTemplate><StackPanel VerticalAlignment="Center" Margin="12,4"><ProgressBar Value="{Binding ProgressPercent, Mode=OneWay}" Maximum="100" Height="7"/><TextBlock Text="{Binding ProgressDisplay}" TextAlignment="Center" FontSize="{DynamicResource App.Font.Small}" Foreground="{DynamicResource App.TextMuted}" Margin="0,4,0,0"/></StackPanel></DataTemplate></DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>

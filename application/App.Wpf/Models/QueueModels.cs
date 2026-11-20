@@ -23,13 +23,17 @@ public sealed record CategoryOption(string Key, string Name);
 public sealed class QueueRow : ObservableObject
 {
     private QueueJob job;
+    private string liveSpeed = "—";
+    public string LiveSpeed { get => liveSpeed; internal set => SetProperty(ref liveSpeed, value); }
     private readonly IDesktopServices Desktop;
     public QueueJob Job => job;
     public QueueRow(QueueJob job, IDesktopServices desktop) { this.job = job; Desktop = desktop; }
     public void Update(QueueJob value)
     {
         if (job == value) return;
-        job = value; OnPropertyChanged(string.Empty);
+        job = value;
+        if (job.State != QueueJobState.Running) LiveSpeed = "—";
+        OnPropertyChanged(string.Empty);
     }
     public string Destination => Job.Destination;
     public string Origin => Job.Source.GetLeftPart(UriPartial.Authority);

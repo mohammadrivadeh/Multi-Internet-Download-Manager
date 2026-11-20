@@ -27,6 +27,8 @@ Updated 2026-11-20. [ADR 0018](decisions/0018-windows-network-balancer.md) recor
 - Each category and queue has an independent settings dialog in the sidebar. Category defaults set the request count, priority, and base folder for new downloads. Queue dialogs manage concurrency and schedule. Older saved defaults apply to their original category, while individual queue settings keep their stored values.
 - The New Download dialog proposes a destination from the URL and category, preserves manual edits, and defaults to Main without changing which queue is selected in the sidebar.
 - The Downloads toolbar filters by download status. Select multiple reveals per-row checkboxes and a checkbox for all visible downloads. Separate dialogs let users choose a destination queue or category for the selected rows.
+- Adapter inventory uses .NET directly and refreshes after Windows address changes. The capture host checks egress flags through IP Helper and refreshes the scheduler with eligible adapters from the original selection. Choose additional adapters when starting another capture session. Live throughput and Task Manager behavior remain to be verified.
+- Automatic download names prefer the server's Content-Disposition metadata and preserve known extensions from redirects or the original URL. Manual filenames take precedence. SQLite checkpoint files remain internal to incomplete segmented downloads.
 
 ## Downloader
 

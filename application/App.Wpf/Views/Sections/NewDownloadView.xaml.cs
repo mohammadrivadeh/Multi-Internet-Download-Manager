@@ -9,7 +9,7 @@ public partial class NewDownloadView : UserControl
 
     private void FocusUrl(object sender, RoutedEventArgs e) => UrlInput.Focus();
 
-    private void PasteUrl(object sender, RoutedEventArgs e)
+    private async void PasteUrl(object sender, RoutedEventArgs e)
     {
         try
         {
@@ -18,6 +18,7 @@ public partial class NewDownloadView : UserControl
                 model.Url = Clipboard.GetText().Trim();
                 UrlInput.Focus();
                 UrlInput.CaretIndex = UrlInput.Text.Length;
+                await model.PreviewFilenameAsync();
             }
         }
         catch (System.Runtime.InteropServices.ExternalException)
