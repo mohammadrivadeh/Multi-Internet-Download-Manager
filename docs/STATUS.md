@@ -51,12 +51,12 @@ Updated 2026-11-14. The user authorized merging to main and continuing without w
 - One active file at a time, aging-based ready selection, five-second due-job checks after Start queue, and awaited download/save/initialization shutdown.
 - Optional per-job payload speed cap shared across all ranged workers/retries and sequential fallback; saved in the protected job configuration and displayed in KiB/s.
 - Console probe/download harnesses, synthetic fixture server and Linux/Windows GitHub Actions build/test workflow.
-- ADRs 0001–0016, architecture notes, acceptance procedures and backlog.
+- ADRs 0001–0017, architecture notes, acceptance procedures and backlog.
 
 ## Validation completed on the current machine
 
 - Release solution build, all nine projects: **0 warnings, 0 errors**.
-- Automated tests: **141 passed, 0 failed, 1 skipped** (50 Core, 88 integration, 3 presentation passed; 1 Windows-only DPAPI skipped).
+- Automated tests: **146 passed, 0 failed, 1 skipped** (54 Core, 89 integration, 3 presentation passed; 1 Windows-only DPAPI skipped).
 - Tested: interval boundaries, randomized exact coverage, stale snapshots, HTTP request/response behavior, invalid identity/header rejection before writes, short/oversized bodies, cancellation, sparse offset above 4 GiB, complete downloads, SQLite resume, damaged checkpoint data repair, changed-resource rejection, differing representations across paths, sequential fallback, checksum failure, destination collision including a race at finalization, and long Retry-After refusal without retrying early. Queue tests additionally cover priority aging, explicit-offset schedules, state transitions, encrypted persistence/tamper rejection, exclusive ownership, duplicate destinations/runners, cancellation ordering, failure progression, restart recovery and protected history after a real scheduled HTTP transfer. Rate-policy tests cover shared concurrent reservations, no idle credit, aggregate engine delivery pacing in segmented/sequential modes, cancellation and saved cap settings.
 - Tests configured at 16, 32 and 64 workers verified more than eight overlapping simulated requests and correct full output. These are correctness tests, not speed benchmarks or real interface aggregation.
 - Real local end-to-end smoke: ASP.NET fixture server → HTTP probe → range transfer → SQLite checkpoints → final file; compared with authoritative fixture SHA-256 and verified sidecar cleanup. A 16-worker configuration was used; the small fixture needs only one default-sized range, so this smoke does not establish 16 concurrent network requests.
@@ -148,3 +148,7 @@ Added explicit category-folder destination suggestions, existing-base folder sel
 ## UI update/optimization increment
 
 Stable observable queue rows now reconcile in place; periodic snapshots no longer clear the collection or unconditionally reset the collection view. Live filtering tracks row changes, category choices avoid unnecessary churn, and progress updates preserve row identity. Added portable presentation tests for update/move/add/remove and duplicate-snapshot notification contracts. UI adds resizable columns/panels, job counts, empty results and state-aware resume/cancel actions. Stale speed/ETA is cleared by the existing polling timer and at runner exit. Actual WPF selection, scrolling, live filtering and accessibility remain Windows acceptance tasks; no rendering or frame-rate benchmark is claimed.
+
+## Safe job editing increment
+
+Added policy-only updates for inactive unfinished jobs and an explicit WPF edit mode. Identity, source, destination, checksum, state and checkpoint progress remain fixed. Store-first atomic publication preserves previous settings on failed saves. Original saved paths are retained unless explicitly replaced; missing discoveries do not silently remove them. Queue starts/scheduled dispatch are held during editing. Tests cover immutable fields, copied settings, state restrictions, validation and persistence failure/retry. Source refresh and live active-policy edits remain out of scope for this increment.

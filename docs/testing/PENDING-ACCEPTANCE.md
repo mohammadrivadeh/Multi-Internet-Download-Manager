@@ -12,6 +12,7 @@ The user explicitly requested on 2026-11-14 that implementation continue without
 | Categories and saved desktop defaults | Pending Windows desktop execution | Category selection/filter/reclassification, DPAPI defaults reload and unreadable-file preservation |
 | Queue UI, close/save races and second instance | Pending Windows desktop execution | Add/requeue/cancel/history filtering, exclusive lease and awaited shutdown |
 | Scheduled start, stop and app restart | Pending desktop execution | Explicit offsets, no start while stopped/closed and Paused crash recovery |
+| Queue edit mode | Pending Windows desktop execution | Identity field locking, explicit connection replacement, unavailable saved addresses, save/cancel and shutdown races |
 | Incremental table and resizable UI | Pending Windows desktop execution | Stable selection/scroll, live filtering after state/category changes, no-results overlay and resize limits |
 | WPF keyboard, screen reader, DPI and high contrast | Pending user execution | Actual desktop accessibility and responsiveness |
 | Close window during transfer | Pending user execution | All writers finish before process exit; successful next-run resume |

@@ -49,7 +49,7 @@ public partial class MainViewModel
         OnPropertyChanged(nameof(QueueStatuses));
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanRunQueue))]
     private async Task RunQueueAsync()
         => await StartQueueAsync(SelectedQueueName, waitForCompletion: true, resumePaused: true);
 
@@ -264,7 +264,7 @@ public partial class MainViewModel
                 }
                 continue;
             }
-            if (queueStops.ContainsKey(name)) continue;
+            if (queueStops.ContainsKey(name) || IsEditing) continue;
             if (QueueScheduling.Next(jobs.Where(j => string.Equals(j.QueueName, name, StringComparison.OrdinalIgnoreCase)), DateTimeOffset.UtcNow) is not null)
                 _ = StartQueueRunnerAsync(settings);
         }

@@ -93,7 +93,7 @@ internal static class EditorDialogs
         }
         content.Children.Add(error);
         content.Children.Add(buttons);
-        var window = Create(owner, title, content, 420);
+        var window = Create(owner, title, new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto }, 420);
         var saving = false;
         window.Closing += (_, args) => args.Cancel = saving;
         window.Loaded += (_, _) =>

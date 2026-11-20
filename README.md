@@ -46,7 +46,7 @@ Optional priority ranges from -10 to 10. A scheduled start must include a date a
 
 The Download speed limit field is in **KiB/s** (1024 bytes/s); enter zero for unlimited. The limit is captured per queue entry and applies to combined accepted payload across its workers, including sequential fallback. It does not shape OS/socket traffic or count ISP billing usage. Changes to the form affect newly added entries, not an already queued/running job. At low caps, durable progress can update slowly because checkpoints occur after whole ranges complete.
 
-Search and state filters apply to the queue/history table. Cancel pending entry does not delete partial files; clearing Completed/Cancelled history does not delete downloads. A Running job must first stop and finish cancellation before its entry can be cancelled. To correct an unavailable saved network address, cancel that entry and add the same original URL/destination with the new explicit selection; do not delete valid checkpoints. Queue capacity is 1000 entries including history.
+Search and state filters apply to the queue/history table. Cancel pending entry does not delete partial files; clearing Completed/Cancelled history does not delete downloads. A Running job must first stop and finish cancellation before its entry can be cancelled. To correct an unavailable saved network address, stop the runner, edit that job and explicitly replace its saved connections; do not delete valid checkpoints. Queue capacity is 1000 entries including history.
 
 To distribute a framework-dependent test build:
 
@@ -121,3 +121,9 @@ Under Destination folder rules, choose an existing base folder and click Suggest
 Drag the divider between the download form and queue to resize panels. The queue shows total/completed job counts and a no-results message for empty filters. Paused/failed rows enable requeue; active/completed rows cannot be cancelled through the pending-entry action. Existing rows update in place so refreshes avoid rebuilding the table. User filtering/sorting can still move or hide rows. The selected details view stays attached to its row.
 
 Speed and ETA become unknown after an idle threshold checked by the five-second timer, and clear when the runner ends. The portable Presentation.Tests suite verifies collection update contracts; real WPF binding, scrolling and accessibility tests still require Windows.
+
+## Editing queued jobs
+
+Select a Queued, Paused or Failed job while the runner is idle, then Edit selected job. Adjust workers, cap, category, priority or scheduling; source, destination and checksum stay fixed. Save job settings preserves state/progress and does not automatically retry a paused/failed job. Cancel edit discards the draft. Queue starts are held while editing.
+
+Saved connection choices are retained even if rediscovery cannot find an address. Check the explicit replacement option only when you want the current selection to replace them. System route is still opt-in. To change the source or destination, create a separate job; this editor does not bypass checkpoint resource validation or refresh an expired URL.

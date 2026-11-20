@@ -35,7 +35,7 @@ public partial class MainViewModel
 
     partial void OnCategoryChanged(string value)
     {
-        if (!string.IsNullOrWhiteSpace(value)) ApplyCategoryDefaults(value);
+        if (editingJob is null && !string.IsNullOrWhiteSpace(value)) ApplyCategoryDefaults(value);
     }
 
     private void ApplyCategoryDefaults(string name)
@@ -73,12 +73,12 @@ public partial class MainViewModel
         Destination = automaticDestination = suggested;
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanAdd))]
     private async Task AddAsync()
     {
         DownloadAdded = false;
         NewDownloadError = "";
-        if (!IsReady || queue is null) return;
+        if (!CanAdd || queue is null) return;
         try
         {
             if (!Uri.TryCreate(Url.Trim(), UriKind.Absolute, out var source) || string.IsNullOrWhiteSpace(Destination)

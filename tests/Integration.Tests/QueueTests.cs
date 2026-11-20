@@ -186,6 +186,7 @@ public class QueueTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => queue.SetQueueNameAsync(job.Id, "Other"));
         await Assert.ThrowsAsync<InvalidOperationException>(() => queue.RunReadyAsync());
         await Assert.ThrowsAsync<InvalidOperationException>(() => queue.SetCategoryAsync(job.Id, "Changed"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => queue.UpdateSettingsAsync(job.Id,new QueueJobSettings {UseSystemRoute=true}));
         stop.Cancel(); await run;
         Assert.True(ended); Assert.Equal(QueueJobState.Paused, store.Jobs[job.Id].State);
     }
@@ -488,13 +489,35 @@ public class QueueTests
         Assert.Equal(QueueJobState.Completed, memory.Jobs[job.Id].State);
     }
 
+    [Fact]
+    public async Task SettingsEditsArePersistedBeforePublishingAndCanBeRetriedAfterSaveFailure()
+    {
+        var memory = new MemoryStore();
+        var queue = new QueueCoordinator(memory,new FakeExecutor((_,_,_)=>Task.CompletedTask),new TestClock(Now));
+        await queue.InitializeAsync(); var job=await queue.EnqueueAsync(Job());
+        var settings = new QueueJobSettings {Workers=16,UseSystemRoute=true,Category="Changed",Priority=7};
+        memory.FailAllWrites=true;
+        await Assert.ThrowsAsync<IOException>(()=>queue.UpdateSettingsAsync(job.Id,settings));
+        Assert.Equal(job,Assert.Single(await queue.SnapshotAsync()));
+        memory.FailAllWrites=false;
+        await queue.UpdateSettingsAsync(job.Id,settings);
+        var updated=Assert.Single(await queue.SnapshotAsync());
+        Assert.Equal(16,updated.Options.Workers);Assert.Equal(7,updated.Priority);Assert.Equal(job.State,updated.State);
+        var reopened = new QueueCoordinator(memory,new FakeExecutor((_,_,_)=>Task.CompletedTask),new TestClock(Now));
+        await reopened.InitializeAsync();Assert.Equal(updated,Assert.Single(await reopened.SnapshotAsync()));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(()=>queue.UpdateSettingsAsync(job.Id,new QueueJobSettings {Workers=0,UseSystemRoute=true}));
+        Assert.Equal(updated,Assert.Single(await queue.SnapshotAsync()));
+    }
+
     private sealed class MemoryStore : IQueueStore
     {
         public Dictionary<Guid, QueueJob> Jobs { get; } = [];
         public IReadOnlyList<QueueJob> Load() => Jobs.Values.ToArray();
+        public bool FailAllWrites { get; set; }
         public bool FailTerminalWrites { get; set; }
         public void Save(QueueJob job)
         {
+            if (FailAllWrites) throw new IOException("Injected settings persistence failure");
             if (FailTerminalWrites && job.State is not (QueueJobState.Queued or QueueJobState.Running)) throw new IOException("Injected terminal save failure");
             Jobs[job.Id] = job;
         }

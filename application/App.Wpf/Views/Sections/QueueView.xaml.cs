@@ -114,6 +114,46 @@ public partial class QueueView : UserControl
         }
     }
 
+    private async void EditDownloadSettingsClick(object sender, RoutedEventArgs e)
+    {
+        if (Window.GetWindow(this) is not { } owner || DataContext is not MainViewModel model ||
+            !model.EditSelectedCommand.CanExecute(null)) return;
+
+        await model.EditSelectedCommand.ExecuteAsync(null);
+        if (!model.IsEditing) return;
+        try
+        {
+            await EditorDialogs.EditFieldsAsync(owner, "Edit download settings",
+                [new("Concurrent requests", model.WorkerCount, Options: Enumerable.Range(1, 128).Select(n => n.ToString()).ToArray()),
+                 new("Priority", model.Priority, Options: Enumerable.Range(-10, 21).Select(n => n.ToString()).ToArray()),
+                 new("Category", model.Category, Options: model.DownloadCategories.Select(item => item.Name).ToArray(), AllowCustomValue: true),
+                 new("Speed limit (KiB/s, 0 for unlimited)", model.SpeedLimitKiB),
+                 new("Scheduled start (ISO date with time zone)", model.ScheduledStart),
+                 new("Daily start (HH:mm)", model.WindowStart), new("Daily stop (HH:mm)", model.WindowEnd),
+                 new("Time zone offset", model.WindowOffset),
+                 new("Network routing", model.UseSystemRoute ? "Windows system route" : "Saved download routes",
+                     Options: model.UseSystemRoute ? ["Windows system route"] : ["Saved download routes", "Windows system route"])],
+                async values =>
+                {
+                    model.WorkerCount = values[0];
+                    model.Priority = values[1];
+                    model.Category = values[2];
+                    model.SpeedLimitKiB = values[3];
+                    model.ScheduledStart = values[4];
+                    model.WindowStart = values[5];
+                    model.WindowEnd = values[6];
+                    model.WindowOffset = values[7];
+                    model.UseSystemRoute = values[8] == "Windows system route";
+                    await model.SaveEditedCommand.ExecuteAsync(null);
+                    return model.IsEditing ? model.Status : null;
+                });
+        }
+        finally
+        {
+            if (model.IsEditing) model.CancelEditCommand.Execute(null);
+        }
+    }
+
     private void PropertiesClick(object sender, RoutedEventArgs e)
     {
         if (Window.GetWindow(this) is not { } owner || DataContext is not MainViewModel model ||
