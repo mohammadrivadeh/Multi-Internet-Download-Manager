@@ -97,6 +97,48 @@ public class DownloadEngineTests
     }
 
     [Fact]
+    public async Task SecondaryProbesValidateConcurrentlyBeforeAnyRangeIsWritten()
+    {
+        await InDirectoryAsync(async target =>
+        {
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var secondEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var thirdEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var completedSecondaryProbes = 0;
+
+            async Task WaitForPeerAsync(TaskCompletionSource entered, TaskCompletionSource peer, CancellationToken token)
+            {
+                entered.TrySetResult();
+                await peer.Task.WaitAsync(token);
+                Interlocked.Increment(ref completedSecondaryProbes);
+            }
+            Task RequireCompletedProbesAsync(long from, long to, CancellationToken token)
+            {
+                Assert.Equal(2, Volatile.Read(ref completedSecondaryProbes));
+                return Task.CompletedTask;
+            }
+
+            using var primary = new HttpClient(new FixtureHandler { BeforeRange = RequireCompletedProbesAsync });
+            using var second = new HttpClient(new FixtureHandler
+            {
+                BeforeProbe = token => WaitForPeerAsync(secondEntered, thirdEntered, token),
+                BeforeRange = RequireCompletedProbesAsync
+            });
+            using var third = new HttpClient(new FixtureHandler
+            {
+                BeforeProbe = token => WaitForPeerAsync(thirdEntered, secondEntered, token),
+                BeforeRange = RequireCompletedProbesAsync
+            });
+
+            await new DownloadEngine().DownloadAsync(new("http://fixture.invalid/file"), target, [primary, second, third],
+                Options with { Workers = 3 }, cancellationToken: deadline.Token);
+
+            Assert.Equal(2, completedSecondaryProbes);
+            Assert.Equal(Fixture, await File.ReadAllBytesAsync(target, deadline.Token));
+        });
+    }
+
+    [Fact]
     public async Task ValidatedPathsTransferConcurrentDisjointRanges()
     {
         await InDirectoryAsync(async target =>
@@ -282,7 +324,10 @@ public class DownloadEngineTests
         await InDirectoryAsync(async target =>
         {
             using var client = new HttpClient(new FixtureHandler { SupportsRanges = supportsRanges, ETag = null });
-            await new DownloadEngine().DownloadAsync(new("http://fixture.invalid/file"), target, [client], Options);
+            using var unusedHandler = new FixtureHandler();
+            using var unusedClient = new HttpClient(unusedHandler);
+            await new DownloadEngine().DownloadAsync(new("http://fixture.invalid/file"), target, [client, unusedClient], Options);
+            Assert.Equal(0, unusedHandler.RequestCount);
             Assert.Equal(Fixture, await File.ReadAllBytesAsync(target));
         });
     }
@@ -448,6 +493,7 @@ public class DownloadEngineTests
         public TimeSpan RetryDelay { get; init; } = TimeSpan.Zero;
         public bool FailOnce { get; set; }
         public Action? BeforeRequest { get; init; }
+        public Func<CancellationToken, Task>? BeforeProbe { get; init; }
         public Func<long, long, CancellationToken, Task>? BeforeRange { get; init; }
         public Action<HttpResponseMessage, long, long>? RangeResponse { get; init; }
         public List<(long From, long To)> Ranges { get; } = [];
@@ -474,6 +520,7 @@ public class DownloadEngineTests
             var isRange = selected is not null && SupportsRanges;
             if (!isRange) { from = 0; to = Fixture.Length - 1; }
             var isDataRange = request.Headers.IfRange is not null;
+            if (selected is not null && !isDataRange && BeforeProbe is not null) await BeforeProbe(cancellationToken);
             if (isDataRange && BeforeRange is not null) await BeforeRange(from, to, cancellationToken);
             lock (Ranges) Ranges.Add((from, to));
             var result = new HttpResponseMessage(isRange ? HttpStatusCode.PartialContent : HttpStatusCode.OK)

@@ -60,9 +60,9 @@ public sealed class DownloadEngine
                 throw new NetworkPathChangedException();
             }
         }
-        Task<RemoteResource> ProbeAsync(int index) => OnPathAsync(index,
+        Task<RemoteResource> ProbeAsync(int index, CancellationToken probeToken) => OnPathAsync(index,
             token => RetryAsync(() => ResourceProbe.ProbeAsync(transports[index], source, token),
-                options.RetryLimit, token, trace?[index]), cancellationToken);
+                options.RetryLimit, token, trace?[index]), probeToken);
 
         var availablePaths = new List<int>();
         RemoteResource? resource = null;
@@ -70,19 +70,17 @@ public sealed class DownloadEngine
         for (var index = 0; index < transports.Count; index++)
         {
             RemoteResource candidate;
-            try { candidate = await ProbeAsync(index); }
+            try { candidate = await ProbeAsync(index, cancellationToken); }
             catch (Exception error) when (transports.Count > 1 && !cancellationToken.IsCancellationRequested && IsPathFailure(error))
             {
                 probeFailure = error;
                 trace?[index].PathFailed(error, "probe");
                 continue;
             }
-            if (resource is not null && candidate != resource)
-                throw new InvalidDataException("Selected paths do not expose the same representation.");
             resource = candidate;
             availablePaths.Add(index);
             trace?[index].Validated();
-            if (!resource.CanSegment) break;
+            break;
         }
         if (resource is null)
             throw new HttpRequestException("No selected path could probe the resource.", probeFailure);
@@ -97,7 +95,30 @@ public sealed class DownloadEngine
             return;
         }
         var length = resource.Length!.Value;
+        var first = availablePaths[0];
         // Every selected path must see exactly the same representation before combining bytes.
+        if (first + 1 < transports.Count)
+        {
+            var remainingPaths = Enumerable.Range(first + 1, transports.Count - first - 1);
+            var validated = new bool[transports.Count];
+            await Parallel.ForEachAsync(remainingPaths,
+                new ParallelOptions { MaxDegreeOfParallelism = 4, CancellationToken = cancellationToken },
+                async (index, token) =>
+                {
+                    RemoteResource candidate;
+                    try { candidate = await ProbeAsync(index, token); }
+                    catch (Exception error) when (!token.IsCancellationRequested && IsPathFailure(error))
+                    {
+                        trace?[index].PathFailed(error, "probe");
+                        return;
+                    }
+                    if (candidate != resource)
+                        throw new InvalidDataException("Selected paths do not expose the same representation.");
+                    validated[index] = true;
+                    trace?[index].Validated();
+                });
+            availablePaths.AddRange(remainingPaths.Where(index => validated[index]));
+        }
         if (trace is not null) LocalDiagnostics.Trace("download-mode", $"job={jobId:N} mode=segmented eligible_paths={availablePaths.Count}");
         var retiredPaths = new int[transports.Count];
         IEnumerable<int> CandidatePaths(int preferred) => availablePaths.Skip(preferred)
@@ -153,7 +174,7 @@ public sealed class DownloadEngine
             foreach (var index in CandidatePaths(0))
             {
                 RemoteResource finalResource;
-                try { finalResource = await ProbeAsync(index); }
+                try { finalResource = await ProbeAsync(index, cancellationToken); }
                 catch (Exception error) when (availablePaths.Count > 1 && !cancellationToken.IsCancellationRequested && IsPathFailure(error))
                 {
                     verificationFailure = error;

@@ -4,7 +4,7 @@ Status: Implemented. Physical multi-uplink acceptance is tracked separately.
 
 Jobs persist the selected adapter identifiers and source addresses. At execution, resolve those selections against current Windows adapter snapshots. Start with the available selected paths. If none remain, report a network failure with no implicit fallback to Windows system routing.
 
-For a segmented download, obtain the effective URL, range support, length, and strong ETag before using a path. A reachable path with a different representation blocks the transfer. A path with a transport failure can be skipped. Unsupported ranges retain the existing sequential mode on one selected path.
+The first successful probe determines the transfer mode and establishes the effective URL, range support, length, and strong ETag. For a segmented resource, validate remaining selected paths concurrently, up to four at a time. A reachable path with a different representation blocks the transfer. A path with a transport failure can be skipped. Unsupported ranges retain the existing sequential mode on one selected path.
 
 A single worker retains ownership of its assigned byte range until the write and checkpoint finish. If a path fails after its retry budget, retire it for the current transfer and replay that range on another validated path. Prefix progress counts accepted file offsets, while per-path logs count all payload received, including retries. The data still flushes before checkpoint metadata is committed. Final validation uses a surviving selected path and checks the expected checksum when supplied.
 
